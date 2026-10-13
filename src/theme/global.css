@@ -1,0 +1,25 @@
+/* Estilos globales mínimos que el theme de Mantine no cubre. */
+
+body {
+  background-color: var(--mantine-color-cloud-2);
+  color: #1b1812;
+}
+
+/* Oswald en mayúscula solo para H1–H3 (guía de tipografía). H4+ usa Inter. */
+h1.mantine-Title-root,
+h2.mantine-Title-root,
+h3.mantine-Title-root {
+  text-transform: uppercase;
+}
+
+h4.mantine-Title-root,
+h5.mantine-Title-root,
+h6.mantine-Title-root {
+  font-family: var(--mantine-font-family);
+}
+
+/* Foco de teclado con color/accent/signal en todo el sitio. */
+:focus-visible {
+  outline: 2px solid var(--mantine-color-signal-6);
+  outline-offset: 2px;
+}
