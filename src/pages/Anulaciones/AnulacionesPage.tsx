@@ -27,6 +27,23 @@ import { listarAnulacionesPendientes, resolverAnulacion } from '@/services/anula
 import { CASOS_MOCKUP_04, type ItemBandejaAnulacion } from './datosMockup04';
 import type { ListadoAnulacionesPendientes } from '@/types/pedido';
 
+function parsearFecha(f?: string): number {
+  if (!f) return 0;
+  if (f.includes('/')) {
+    const [fechaParte, horaParte = '00:00'] = f.split(' ');
+    const partesFecha = fechaParte.split('/');
+    if (partesFecha.length === 3) {
+      const d = parseInt(partesFecha[0], 10);
+      const m = parseInt(partesFecha[1], 10);
+      const y = parseInt(partesFecha[2], 10);
+      const [hh = '0', mm = '0'] = horaParte.split(':');
+      return new Date(y, m - 1, d, parseInt(hh, 10), parseInt(mm, 10)).getTime();
+    }
+  }
+  const timestamp = new Date(f).getTime();
+  return isNaN(timestamp) ? 0 : timestamp;
+}
+
 export function AnulacionesPage() {
   // Estado de filtros
   const [busqueda, setBusqueda] = useState('');
@@ -85,9 +102,9 @@ export function AnulacionesPage() {
     return casosLocales;
   }, [usandoDatosEnVivo, datosBackend, casosLocales]);
 
-  // Filtrado
+  // Filtrado y ordenamiento
   const casosFiltrados = useMemo(() => {
-    return casosMostrar.filter((c) => {
+    const filtrados = casosMostrar.filter((c) => {
       const matchBusqueda =
         busqueda.trim() === '' ||
         c.pedidoId.toLowerCase().includes(busqueda.toLowerCase()) ||
@@ -104,7 +121,13 @@ export function AnulacionesPage() {
 
       return matchBusqueda && matchEstado && matchCanal;
     });
-  }, [casosMostrar, busqueda, filtroEstado, filtroCanal]);
+
+    return [...filtrados].sort((a, b) => {
+      const timeA = parsearFecha(a.fecha);
+      const timeB = parsearFecha(b.fecha);
+      return orden === 'antiguos' ? timeA - timeB : timeB - timeA;
+    });
+  }, [casosMostrar, busqueda, filtroEstado, filtroCanal, orden]);
 
   // Paginado
   const totalPaginas = usandoDatosEnVivo
@@ -291,7 +314,10 @@ export function AnulacionesPage() {
             <Select
               label="Orden"
               value={orden}
-              onChange={setOrden}
+              onChange={(val) => {
+                setOrden(val);
+                setPagina(1);
+              }}
               data={[
                 { value: 'recientes', label: 'Más recientes' },
                 { value: 'antiguos', label: 'Más antiguos' },
