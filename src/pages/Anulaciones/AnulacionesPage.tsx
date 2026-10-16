@@ -24,6 +24,7 @@ import { ModalConfirmacion } from '@/components/ModalConfirmacion';
 import { EstadoCarga } from '@/components/EstadoCarga';
 import { useConsulta } from '@/hooks/useConsulta';
 import { listarAnulacionesPendientes, resolverAnulacion } from '@/services/anulaciones';
+import { ApiError } from '@/services/api';
 import { CASOS_MOCKUP_04, type ItemBandejaAnulacion } from './datosMockup04';
 import type { ListadoAnulacionesPendientes } from '@/types/pedido';
 
@@ -190,11 +191,38 @@ export function AnulacionesPage() {
         color: 'green',
       });
     } catch (e: unknown) {
-      notifications.show({
-        title: 'Error al aprobar',
-        message: 'No se pudo comunicar la decisión al servidor.',
-        color: 'red',
-      });
+      if (e instanceof ApiError && e.status === 409) {
+        setModalAprobarAbierto(false);
+        notifications.show({
+          title: 'Solicitud Rechazada por Conflicto (409)',
+          message: e.message || 'El pedido ya no se encuentra en preparación (ha sido despachado). La anulación fue marcada como RECHAZADA.',
+          color: 'orange',
+        });
+        if (casoSeleccionado) {
+          const actualizadoRechazado: ItemBandejaAnulacion = {
+            ...casoSeleccionado,
+            autorizacion: 'Rechazada',
+            solicitud: 'RECHAZADA',
+            efectos: {
+              estadoPedido: 'Pedido sin cambios (DESPACHADO)',
+              stock: 'Sin cambios',
+              despacho: 'Sin cambios',
+              reembolso: 'No aplica',
+            },
+          };
+          setCasoSeleccionado(actualizadoRechazado);
+          setCasosLocales((prev) =>
+            prev.map((c) => (c.solicitudAnulacionId === actualizadoRechazado.solicitudAnulacionId ? actualizadoRechazado : c))
+          );
+        }
+        recargar();
+      } else {
+        notifications.show({
+          title: 'Error al aprobar',
+          message: e instanceof ApiError ? e.message : 'No se pudo comunicar la decisión al servidor.',
+          color: 'red',
+        });
+      }
     } finally {
       setProcesandoAccion(false);
     }
