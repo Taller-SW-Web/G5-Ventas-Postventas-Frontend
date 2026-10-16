@@ -9,9 +9,10 @@ import backIcon from '@/assets/reembolsos/back.svg';
 import calendarIcon from '@/assets/reembolsos/calendar.svg';
 import chevronIcon from '@/assets/reembolsos/chevron.svg';
 import searchIcon from '@/assets/reembolsos/search.svg';
+import { DetalleReembolso, ResultadoReembolso } from './DetalleReembolso';
 import './ReembolsosPage.css';
 
-interface ReembolsoVisual {
+export interface ReembolsoVisual {
   codigo: string;
   fecha: string;
   pedido: string;
@@ -90,7 +91,7 @@ export function ReembolsosPage() {
 
   const aplicarFiltros = () => { setBusquedaAplicada(busqueda); setEstadoAplicado(estadoFiltro); setOrigenAplicado(origenFiltro); setFechaAplicada(fechaFiltro); setPagina(1); };
   const limpiarFiltros = () => { setBusqueda(''); setEstadoFiltro('TODOS'); setOrigenFiltro('TODOS'); setFechaFiltro(null); setBusquedaAplicada(''); setEstadoAplicado('TODOS'); setOrigenAplicado('TODOS'); setFechaAplicada(null); setPagina(1); };
-  const abrirAccion = (reembolso: ReembolsoVisual) => { setSeleccionado(reembolso); setModal(reembolso.estado === 'FALLIDO' ? 'reintento' : 'autorizar'); };
+  const abrirDetalle = (reembolso: ReembolsoVisual) => { setSeleccionado(reembolso); setModal(null); };
 
   return (
     <section className="reembolsos-page">
@@ -102,15 +103,16 @@ export function ReembolsosPage() {
         <label className="reembolsos-field reembolsos-date"><span>Fecha de creación</span><DateInput value={fechaFiltro} onChange={setFechaFiltro} valueFormat="DD/MM/YYYY" placeholder="Todos" leftSection={<img src={calendarIcon} alt="" className="reembolsos-input-icon" />} aria-label="Filtrar por fecha de creación" /></label>
         <div className="reembolsos-filter-actions"><Button onClick={aplicarFiltros}>Aplicar filtros</Button><Button variant="default" onClick={limpiarFiltros}>Limpiar</Button></div>
       </section>
-      <section className="reembolsos-card" aria-label="Listado de reembolsos">
+      <section className={seleccionado ? 'reembolsos-card reembolsos-card--selected' : 'reembolsos-card'} aria-label="Listado de reembolsos">
         <div className="reembolsos-card-heading"><div><Title order={2}>Reembolsos</Title><Text>Operaciones registradas</Text></div><Select value={ordenamiento} onChange={(valor) => setOrdenamiento(valor === 'antiguos' ? 'antiguos' : 'recientes')} data={[{ value: 'recientes', label: 'Más recientes' }, { value: 'antiguos', label: 'Más antiguos' }]} rightSection={<img src={chevronIcon} alt="" className="reembolsos-input-icon" />} rightSectionPointerEvents="none" allowDeselect={false} /></div>
-        {filas.length === 0 ? <Text className="reembolsos-empty">No hay reembolsos que coincidan con los filtros.</Text> : <Table className="reembolsos-table" horizontalSpacing={8} verticalSpacing={0}><Table.Thead><Table.Tr><Table.Th>Código / fecha</Table.Th><Table.Th>Pedido</Table.Th><Table.Th>Cliente</Table.Th><Table.Th>Origen</Table.Th><Table.Th>Monto</Table.Th><Table.Th>Estado</Table.Th><Table.Th>Acción</Table.Th></Table.Tr></Table.Thead><Table.Tbody>{filasPagina.map((reembolso) => <Table.Tr key={reembolso.codigo}><Table.Td><strong>{reembolso.codigo}</strong><small>{reembolso.fecha}</small></Table.Td><Table.Td>{reembolso.pedido}</Table.Td><Table.Td>{reembolso.cliente}</Table.Td><Table.Td><span className={`reembolsos-origin reembolsos-origin--${reembolso.origen.toLowerCase()}`}>{etiquetaOrigen[reembolso.origen]}</span></Table.Td><Table.Td>{etiquetaMonto(reembolso.monto)}</Table.Td><Table.Td><EstadoBadge entidad="reembolso" estado={reembolso.estado} size="sm" /></Table.Td><Table.Td><Button variant="default" size="xs" onClick={() => abrirAccion(reembolso)}>Ver</Button></Table.Td></Table.Tr>)}</Table.Tbody></Table>}
+        {filas.length === 0 ? <Text className="reembolsos-empty">No hay reembolsos que coincidan con los filtros.</Text> : <Table className="reembolsos-table" horizontalSpacing={8} verticalSpacing={0}><Table.Thead><Table.Tr><Table.Th>Código / fecha</Table.Th><Table.Th>Pedido</Table.Th><Table.Th>Cliente</Table.Th><Table.Th>Origen</Table.Th><Table.Th>Monto</Table.Th><Table.Th>Estado</Table.Th><Table.Th>Acción</Table.Th></Table.Tr></Table.Thead><Table.Tbody>{filasPagina.map((reembolso) => <Table.Tr key={reembolso.codigo}><Table.Td><strong>{reembolso.codigo}</strong><small>{reembolso.fecha}</small></Table.Td><Table.Td>{reembolso.pedido}</Table.Td><Table.Td>{reembolso.cliente}</Table.Td><Table.Td><span className={`reembolsos-origin reembolsos-origin--${reembolso.origen.toLowerCase()}`}>{etiquetaOrigen[reembolso.origen]}</span></Table.Td><Table.Td>{etiquetaMonto(reembolso.monto)}</Table.Td><Table.Td><EstadoBadge entidad="reembolso" estado={reembolso.estado} size="sm" /></Table.Td><Table.Td><Button variant="default" size="xs" onClick={() => abrirDetalle(reembolso)}>Ver</Button></Table.Td></Table.Tr>)}</Table.Tbody></Table>}
         <div className="reembolsos-pagination"><Text>Mostrando {etiquetaResultados}</Text><Pagination value={pagina} onChange={setPagina} total={totalPaginas} size="sm" siblings={0} boundaries={1} /></div>
       </section>
+      {seleccionado && <DetalleReembolso reembolso={seleccionado} onClose={() => setSeleccionado(null)} onOpenModal={setModal} />}
       <Modal opened={modal === 'autorizar'} onClose={() => setModal(null)} withCloseButton={false} size={450} padding={23} classNames={{ content: 'reembolsos-modal' }} centered><Title order={2}>Autorizar reembolso</Title><Text>Confirma que el origen fue aprobado y que el monto corresponde al pago original.</Text><div className="reembolsos-modal-actions"><Button variant="default" onClick={() => setModal(null)}>Cancelar</Button><Button onClick={() => setModal('ejecutar')}>Confirmar autorización</Button></div></Modal>
       <Modal opened={modal === 'ejecutar'} onClose={() => setModal(null)} withCloseButton={false} size={470} padding={23} classNames={{ content: 'reembolsos-modal' }} centered><Title order={2}>Ejecutar reembolso</Title><Text>La operación se enviará al simulador conservando la misma clave idempotente del expediente.</Text><div className="reembolsos-modal-actions"><Button variant="default" onClick={() => setModal(null)}>Cancelar</Button><Button onClick={() => setModal('resultado')}>Ejecutar</Button></div></Modal>
       <Modal opened={modal === 'reintento'} onClose={() => setModal(null)} withCloseButton={false} size={470} padding={23} classNames={{ content: 'reembolsos-modal' }} centered><Title order={2}>Reintento seguro</Title><Text>Se continuará el mismo expediente y se conservará la clave idempotente; no se creará un segundo reembolso.</Text><div className="reembolsos-modal-actions"><Button variant="default" onClick={() => setModal(null)}>Cancelar</Button><Button onClick={() => setModal('ejecutar')}>Preparar reintento</Button></div></Modal>
-      <Modal opened={modal === 'resultado'} onClose={() => setModal(null)} withCloseButton={false} size={500} padding={23} classNames={{ content: 'reembolsos-modal' }} centered><Title order={2}>Resultado del reembolso</Title>{seleccionado && <dl className="reembolsos-result"><dt>Código</dt><dd>{seleccionado.codigo}</dd><dt>Pedido</dt><dd>{seleccionado.pedido}</dd><dt>Origen</dt><dd>{etiquetaOrigen[seleccionado.origen]}</dd><dt>Monto</dt><dd>{etiquetaMonto(seleccionado.monto)}</dd><dt>Id operación</dt><dd>—</dd><dt>Estado</dt><dd>{seleccionado.estado}</dd><dt>Resultado</dt><dd>Pendiente de autorización</dd></dl>}<div className="reembolsos-result-close"><Button color="dark" onClick={() => setModal(null)}>Cerrar</Button></div></Modal>
+      <Modal opened={modal === 'resultado'} onClose={() => setModal(null)} withCloseButton={false} size={500} padding={23} classNames={{ content: 'reembolsos-modal' }} centered><ResultadoReembolso reembolso={seleccionado} onClose={() => setModal(null)} /></Modal>
     </section>
   );
 }
