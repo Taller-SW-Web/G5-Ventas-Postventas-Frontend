@@ -18,7 +18,7 @@ const reglas = [
   'Una calificación baja no genera un reclamo automáticamente',
 ];
 
-export function DetalleSatisfaccion({ abierto, contexto, opcionesPeriodos, onCambiarContexto, resumen, onCerrar, estado }: DetalleSatisfaccionProps) {
+export function DetalleSatisfaccion({ abierto, contexto, opcionesPeriodos, onCambiarContexto, resumen, onCerrar, estado, mensajeSinDistribucion = 'La distribución de calificaciones no está disponible.' }: DetalleSatisfaccionProps) {
   const promedio = resumen.promedio;
   // Es avance sobre la escala máxima, no el porcentaje de respuestas favorables.
   const avance = promedio === null ? 0 : Math.min(100, Math.max(0, promedio / 5 * 100));
@@ -49,7 +49,9 @@ export function DetalleSatisfaccion({ abierto, contexto, opcionesPeriodos, onCam
               <section className={styles.distribucion} aria-label="Distribución de calificaciones">
                 <p className={styles.subtitulo}>Distribución de calificaciones</p>
                 {resumen.distribucion.length === 0 ? (
-                  <p className={styles.vacio}>No hay calificaciones para este periodo y canal.</p>
+                  <p className={styles.vacio}>{promedio === null
+                    ? 'No hay calificaciones para este periodo y canal.'
+                    : mensajeSinDistribucion}</p>
                 ) : resumen.distribucion.map(({ puntuacion, porcentaje }) => (
                   <div key={puntuacion} className={styles.fila}>
                     <span>{puntuacion} ★</span>
