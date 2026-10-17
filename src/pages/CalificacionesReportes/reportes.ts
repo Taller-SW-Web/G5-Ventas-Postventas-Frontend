@@ -123,3 +123,28 @@ export interface ContextoReporte {
   anterior: MetricasDashboard;
   rangoAnterior: Rango;
 }
+
+/**
+ * Exportación (ESP-16, sección 8): CSV con exactamente los indicadores de la consulta aplicada, sin volver a
+ * llamar al backend. Separador ";" y BOM UTF-8 para que Excel en español lo abra con columnas y tildes.
+ */
+export function csvReporte(c: ContextoReporte): string {
+  const celda = (v: string) => (/[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+  const valor = (i: Indicador) => (i.numero === null ? '' : String(i.numero));
+  const filas = [
+    ['Periodo', c.periodo],
+    ['Desde', c.rango.desde],
+    ['Hasta', c.rango.hasta],
+    ['Canal', c.canal],
+    ['Última actualización', c.actual.ultimaActualizacion ?? ''],
+    [],
+    ['Grupo', 'Indicador', 'Valor'],
+    ...indicadores(c.actual).map((i) => [i.grupo === 'PEDIDOS' ? 'Pedidos' : 'Postventa', i.etiqueta, valor(i)]),
+  ];
+  return '﻿' + filas.map((f) => f.map(celda).join(';')).join('\r\n') + '\r\n';
+}
+
+export function nombreArchivoReporte(c: ContextoReporte): string {
+  const canal = c.canal.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-');
+  return `reporte-ventas-postventa_${c.rango.desde}_${c.rango.hasta}_${canal}.csv`;
+}
