@@ -35,6 +35,7 @@ import {
   type PeriodoReporte,
   type VistaReporte,
 } from './reportes';
+import { ProveedorCalificaciones } from './ProveedorCalificaciones';
 import { SeccionComentarios } from './SeccionComentarios';
 import { SeccionSatisfaccion } from './SeccionSatisfaccion';
 
@@ -88,6 +89,11 @@ export function CalificacionesReportesPage() {
   };
 
   return (
+    <ProveedorCalificaciones periodo={aplicados.periodo} canal={aplicados.canal as Canal | 'TODOS'}
+      onCambiarFiltros={(periodo, canal) => {
+        setControles((f) => ({ ...f, periodo, canal }));
+        setAplicados((f) => ({ ...f, periodo, canal }));
+      }}>
     <Stack gap="lg">
       <Title order={1}>Calificaciones y reportes</Title>
 
@@ -172,6 +178,7 @@ export function CalificacionesReportesPage() {
       />
       <ModalResumen abierto={modal === 'resumen'} contexto={contexto} onCerrar={() => setModal(null)} />
     </Stack>
+    </ProveedorCalificaciones>
   );
 }
 

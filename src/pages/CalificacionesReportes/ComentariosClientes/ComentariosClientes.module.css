@@ -1,0 +1,26 @@
+.contenido { min-height: 588px; padding-bottom: 33px; }
+.tablaContenedor { margin-top: 16px; overflow-x: auto; }
+.tabla { width: 100%; min-width: 680px; table-layout: fixed; border-collapse: separate; border-spacing: 0; }
+.fecha { width: 104px; }
+.pedido { width: 132px; }
+.canal { width: 114px; }
+.puntuacion { width: 64px; }
+.tabla th { height: 34px; padding: 7px 8px; background: var(--mantine-color-cloud-3); color: var(--mantine-color-ink-9); font-size: 8.4px; font-weight: 700; line-height: 20px; text-align: center; }
+.tabla th:first-child { border-radius: 8px 0 0 8px; }
+.tabla th:last-child { border-radius: 0 8px 8px 0; text-align: center; }
+.tabla td { height: 40px; padding: 9px 8px 10px; color: var(--mantine-color-ink-9); font-size: 8.5px; line-height: 20px; text-align: center; }
+.tabla td:first-child { color: var(--mantine-color-ink-4); }
+.tabla strong { font-size: 8.6px; font-weight: 600; }
+.fila { position: relative; }
+.tabla .comentario { position: relative; text-align: center; overflow-wrap: anywhere; }
+.separador { position: absolute; right: 0; bottom: 0; width: 852px; height: 1px; pointer-events: none; }
+.separador img { display: block; }
+.favorable { color: #6a8a00; font-weight: 700; }
+.neutra { color: #9a6400; font-weight: 700; }
+.critica { color: #b0281c; font-weight: 700; }
+.tabla .vacio { padding: 35px 12px; color: var(--mantine-color-ink-4); font-size: 12px; }
+
+@media (max-width: 600px) {
+  .contenido { min-height: 0; padding-bottom: 16px; }
+}
+
