@@ -1,0 +1,19 @@
+/* Accesos de la barra lateral: texto claro sobre ink; el activo, tarjeta clara con acento naranja (Figma).
+   El activo lo marca React Router con aria-current="page". */
+.acceso {
+  --nl-color: var(--mantine-color-cloud-2);
+  --nl-hover: var(--mantine-color-ink-7);
+  border-radius: var(--mantine-radius-md);
+  color: var(--mantine-color-cloud-2);
+  padding-block: 12px;
+}
+
+.acceso.acceso[aria-current='page'] {
+  --nl-bg: var(--mantine-color-cloud-0);
+  --nl-color: var(--mantine-color-ink-9);
+  --nl-hover: var(--mantine-color-cloud-0);
+  background-color: var(--mantine-color-cloud-0);
+  color: var(--mantine-color-ink-9);
+  font-weight: 600;
+  box-shadow: inset 4px 0 0 var(--mantine-color-orange-7);
+}

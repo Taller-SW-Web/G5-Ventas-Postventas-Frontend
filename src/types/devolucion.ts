@@ -1,5 +1,5 @@
 // Contrato M2 — api-postventas.md 2.1 a 2.5 (F3)
-import type { Moneda, Paginado, ParametrosPaginacion } from './comun';
+import type { Canal, Moneda, Paginado, ParametrosPaginacion } from './comun';
 import type { EstadoReembolso } from './reembolso';
 
 export type TipoDevolucion = 'CAMBIO' | 'DEVOLUCION_DINERO';
@@ -100,6 +100,11 @@ export interface DevolucionDetalle {
   resolucion: ResolucionDevolucion | null;
   evidencias?: Evidencia[];
   fechaRegistro: string;
+  // Campos que pide el Mockup 06 y todavía no están en el contrato 2.3 (pendiente de agregar en api-postventas.md).
+  canal?: Canal;
+  nombreCliente?: string;
+  /** Fecha de entrega del pedido (desde M1): base del plazo de 7 días naturales. */
+  fechaEntrega?: string;
 }
 
 /** Fila de 2.4 GET /api/v2/devoluciones */
@@ -111,16 +116,31 @@ export interface DevolucionResumen {
   motivo: MotivoDevolucion;
   estadoReembolso: EstadoReembolso | null;
   fechaRegistro: string;
+  // Pendientes de contrato 2.4 (bandeja del Mockup 06): canal y nombre del cliente.
+  canal?: Canal;
+  nombreCliente?: string;
 }
 
 export interface ListadoDevoluciones extends Paginado<DevolucionResumen> {
-  clienteId: string;
+  /** Solo viene cuando se filtra por cliente. */
+  clienteId?: string;
 }
 
+export type OrdenDevoluciones = 'RECIENTES' | 'ANTIGUOS';
+
 export interface FiltrosDevoluciones extends ParametrosPaginacion {
-  clienteId: string;
+  /**
+   * El contrato 2.4 lo exige, pero la bandeja del Mockup 06 lista todos los expedientes:
+   * se envía solo si se filtra por cliente (pendiente de ajustar el contrato).
+   */
+  clienteId?: string;
   estado?: EstadoDevolucion;
   tipo?: TipoDevolucion;
+  // Filtros del Mockup 06 que aún no están en el contrato 2.4.
+  /** Código de expediente, pedido o nombre del cliente. */
+  buscar?: string;
+  canal?: Canal;
+  orden?: OrdenDevoluciones;
 }
 
 /** 2.5 PATCH /api/v2/devoluciones/{devolucionId}/resolucion */

@@ -23,19 +23,26 @@ export interface ContactoPedido {
   tipoDocumento: string;
   numeroDocumento: string;
   email: string;
-  telefono?: string;
+  telefono?: string | null;
 }
 
 export interface PagoPedido {
   total: number;
   moneda: Moneda;
-  metodoPago: string;
+  metodoPago: string | null;
 }
 
+/** En RETAIL solo viene tiendaId (acuerdo G4); en los demás canales, la dirección. */
 export interface EnvioPedido {
-  modalidad: string;
-  direccion: string;
-  distrito: string;
+  modalidad: string | null;
+  direccion: string | null;
+  distrito: string | null;
+  tiendaId: string | null;
+  departamento: string | null;
+  provincia: string | null;
+  referencia: string | null;
+  /** La fija Despacho (G2) al reprogramar. */
+  fechaEstimadaEntrega: string | null;
 }
 
 export interface ItemPedido {
@@ -50,7 +57,7 @@ export interface HistorialEstado {
   estado: EstadoPedido;
   fecha: string;
   actor: ActorHistorial;
-  motivo: string;
+  motivo: string | null;
 }
 
 /** 1.3 GET /api/v1/pedidos/{pedidoId} */
@@ -60,16 +67,14 @@ export interface PedidoDetalle {
   estado: EstadoPedido;
   contacto: ContactoPedido;
   pago: PagoPedido;
-  /** Opcional en RETAIL (usa tiendaId). */
-  envio?: EnvioPedido;
-  tiendaId?: string;
+  envio: EnvioPedido | null;
   items: ItemPedido[];
   fechaCreacion: string;
   ultimaActualizacion: string;
   historialEstados: HistorialEstado[];
 }
 
-/** Fila del listado 1.4 */
+/** Fila del listado 1.4. nombreCliente va además del contrato (bandeja del Mockup 02). */
 export interface PedidoResumen {
   pedidoId: string;
   canal: Canal;
@@ -77,18 +82,35 @@ export interface PedidoResumen {
   total: number;
   moneda: Moneda;
   fechaCreacion: string;
+  nombreCliente: string | null;
 }
 
-/** 1.4 GET /api/v1/pedidos */
+/** 1.4 GET /api/v1/pedidos. clienteId es null cuando la bandeja lista todos los pedidos. */
 export interface ListadoPedidos extends Paginado<PedidoResumen> {
-  clienteId: string;
+  clienteId: string | null;
 }
 
+export type OrdenPedidos = 'RECIENTES' | 'ANTIGUOS';
+
+/** Filtros de 1.4, todos opcionales. canal, buscar y orden van además del contrato (Mockup 02). */
 export interface FiltrosPedidos extends ParametrosPaginacion {
   clienteId?: string;
   estado?: EstadoPedido;
+  canal?: Canal;
+  /** Código PED-AAAA-NNNNN, número de documento o parte del nombre del cliente. */
+  buscar?: string;
+  /** YYYY-MM-DD, inclusivo. */
   desde?: string;
   hasta?: string;
+  orden?: OrdenPedidos;
+}
+
+/** Respuesta de "Pasar a preparación" y "Paquete sellado". idDespacho solo en el segundo. */
+export interface AccionPedidoResponse {
+  pedidoId: string;
+  estado: EstadoPedido;
+  idDespacho: string | null;
+  mensaje: string | null;
 }
 
 // ---------- F2: Anulaciones ----------
