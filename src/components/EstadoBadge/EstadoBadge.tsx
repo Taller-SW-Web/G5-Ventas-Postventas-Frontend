@@ -3,7 +3,7 @@
 import { Badge, type BadgeProps } from '@mantine/core';
 import type { EstadoPedido, EstadoAnulacion } from '@/types/pedido';
 import type { EstadoDevolucion } from '@/types/devolucion';
-import type { EstadoReclamo, EstadoSla, PrioridadCaso, SituacionCaso } from '@/types/reclamo';
+import type { EstadoReclamo, EstadoSla } from '@/types/reclamo';
 import type { EstadoReembolso } from '@/types/reembolso';
 
 // Colores provisionales con la paleta semántica; la definición final viene de Figma.
@@ -48,17 +48,6 @@ const COLORES = {
     VENCIDO: 'ink',
     ATENDIDO: 'gray',
   },
-  // Atención prioritaria (Figma): situación del caso y prioridad.
-  situacion: {
-    VENCIDO: 'red',
-    POR_VENCER: 'yellow',
-    PENDIENTE_EVALUACION: 'yellow',
-    EN_EVALUACION: 'signal',
-  },
-  prioridad: {
-    ALTA: 'orange',
-    MEDIA: 'gray',
-  },
 } as const satisfies {
   pedido: Record<EstadoPedido, string>;
   anulacion: Record<EstadoAnulacion, string>;
@@ -66,14 +55,11 @@ const COLORES = {
   reclamo: Record<EstadoReclamo, string>;
   reembolso: Record<EstadoReembolso, string>;
   sla: Record<EstadoSla, string>;
-  situacion: Record<SituacionCaso, string>;
-  prioridad: Record<PrioridadCaso, string>;
 };
 
 /** Textos que no salen bien de la regla automática (tildes). */
 const ETIQUETAS: Partial<Record<string, string>> = {
   CRITICO: 'Crítico',
-  PENDIENTE_EVALUACION: 'Pendiente evaluación',
   EN_EVALUACION: 'En evaluación',
 };
 
@@ -83,9 +69,7 @@ type EntidadEstado =
   | { entidad: 'devolucion'; estado: EstadoDevolucion }
   | { entidad: 'reclamo'; estado: EstadoReclamo }
   | { entidad: 'reembolso'; estado: EstadoReembolso }
-  | { entidad: 'sla'; estado: EstadoSla }
-  | { entidad: 'situacion'; estado: SituacionCaso }
-  | { entidad: 'prioridad'; estado: PrioridadCaso };
+  | { entidad: 'sla'; estado: EstadoSla };
 
 export type EstadoBadgeProps = EntidadEstado &
   Omit<BadgeProps, 'color' | 'children'> & {
