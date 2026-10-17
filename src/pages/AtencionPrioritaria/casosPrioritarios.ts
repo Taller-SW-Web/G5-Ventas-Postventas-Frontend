@@ -1,8 +1,11 @@
-// Casos de "Atención prioritaria" (Mockup 05): reclamos por SLA + expedientes de F3 pendientes de evaluación.
-// No hay endpoint propio: se arma con lo que expone cada módulo.
-import { fuenteDevoluciones } from '@/pages/Devoluciones/fuenteDevoluciones';
+// Casos de "Atención prioritaria" (Mockup 05): reclamos por SLA (2.10) + expedientes de F3 pendientes de
+// evaluación (2.4). No hay endpoint propio: se arma con lo que expone cada módulo.
+import { listarDevoluciones } from '@/services/devoluciones';
+import { obtenerPedido } from '@/services/pedidos';
+import { listarReclamos } from '@/services/reclamos';
 import { ETIQUETA_MOTIVO } from '@/pages/Devoluciones/formato';
-import type { DevolucionResumen } from '@/types/devolucion';
+import type { DevolucionResumen, EstadoDevolucion } from '@/types/devolucion';
+import type { MotivoReclamo, ReclamoResumen } from '@/types/reclamo';
 
 export type TipoCaso = 'RECLAMO' | 'DEVOLUCION' | 'CAMBIO';
 export type SituacionCaso = 'VENCIDO' | 'PROXIMO_A_VENCER' | 'PENDIENTE_EVALUACION' | 'EN_EVALUACION';
@@ -18,6 +21,12 @@ export interface CasoPrioritario {
   prioridad: PrioridadCaso;
   /** Pantalla donde se sigue gestionando el caso. */
   ruta: string;
+}
+
+export interface CasosPrioritarios {
+  casos: CasoPrioritario[];
+  /** Módulos que no respondieron: la bandeja muestra lo que sí llegó. */
+  avisos: string[];
 }
 
 export const ETIQUETA_TIPO_CASO: Record<TipoCaso, string> = {
@@ -38,36 +47,38 @@ export const ETIQUETA_PRIORIDAD: Record<PrioridadCaso, string> = {
   MEDIA: 'Media',
 };
 
-// Reclamos del Mockup 05 mientras no se conecte la bandeja de reclamos de F6 (2.10, Fabrizio).
-const RECLAMOS_DEMO: CasoPrioritario[] = [
-  {
-    codigo: 'REC-2026-0041',
-    fecha: '2026-09-08T10:00:00Z',
-    tipo: 'RECLAMO',
-    cliente: 'José Castro',
-    contexto: 'Incumplimiento de plazo',
-    situacion: 'VENCIDO',
-    prioridad: 'ALTA',
-    ruta: '/admin/postventa/reclamos?codigo=REC-2026-0041',
-  },
-  {
-    codigo: 'REC-2026-0051',
-    fecha: '2026-09-20T10:00:00Z',
-    tipo: 'RECLAMO',
-    cliente: 'Carlos Ruiz',
-    contexto: 'Cobro indebido',
-    situacion: 'PROXIMO_A_VENCER',
-    prioridad: 'ALTA',
-    ruta: '/admin/postventa/reclamos?codigo=REC-2026-0051',
-  },
-];
+const ETIQUETA_MOTIVO_RECLAMO: Record<MotivoReclamo, string> = {
+  INCUMPLIMIENTO_PLAZO_ENTREGA: 'Incumplimiento de plazo',
+  PRODUCTO_DEFECTUOSO_O_INCORRECTO: 'Producto defectuoso o incorrecto',
+  COBRO_INDEBIDO_O_NO_RECONOCIDO: 'Cobro indebido',
+  ATENCION_INADECUADA: 'Atención inadecuada',
+  INCUMPLIMIENTO_GARANTIA: 'Incumplimiento de garantía',
+};
 
-function aCaso(d: DevolucionResumen): CasoPrioritario {
+/** Tope por consulta: la bandeja es un resumen de prioridades, no el listado completo de cada módulo. */
+const TAMANO_MAXIMO = 100;
+
+function aCasoReclamo(r: ReclamoResumen): CasoPrioritario {
+  const vencido = r.estadoSla === 'VENCIDO';
+  return {
+    codigo: r.codigoSeguimiento,
+    fecha: r.fechaRegistro,
+    tipo: 'RECLAMO',
+    cliente: r.nombreConsumidor ?? '—',
+    contexto: ETIQUETA_MOTIVO_RECLAMO[r.motivo],
+    situacion: vencido ? 'VENCIDO' : 'PROXIMO_A_VENCER',
+    // Vencidos y críticos (0 a 2 días hábiles) van primero.
+    prioridad: vencido || r.estadoSla === 'CRITICO' ? 'ALTA' : 'MEDIA',
+    ruta: `/admin/postventa/reclamos?codigo=${encodeURIComponent(r.codigoSeguimiento)}`,
+  };
+}
+
+function aCasoDevolucion(d: DevolucionResumen, cliente: string): CasoPrioritario {
   return {
     codigo: d.devolucionId,
     fecha: d.fechaRegistro,
     tipo: d.tipo === 'CAMBIO' ? 'CAMBIO' : 'DEVOLUCION',
-    cliente: d.nombreCliente ?? '—',
+    cliente,
     contexto: ETIQUETA_MOTIVO[d.motivo],
     situacion: d.estado === 'SOLICITADA' ? 'PENDIENTE_EVALUACION' : 'EN_EVALUACION',
     prioridad: 'MEDIA',
@@ -75,14 +86,57 @@ function aCaso(d: DevolucionResumen): CasoPrioritario {
   };
 }
 
-/** Primero los reclamos por SLA (vencidos antes), luego los expedientes de F3 más recientes. */
-export async function obtenerCasosPrioritarios(): Promise<CasoPrioritario[]> {
-  const [solicitadas, enEvaluacion] = await Promise.all([
-    fuenteDevoluciones.listar({ estado: 'SOLICITADA', pagina: 0, tamano: 100 }),
-    fuenteDevoluciones.listar({ estado: 'EN_EVALUACION', pagina: 0, tamano: 100 }),
+async function casosReclamos(): Promise<CasoPrioritario[]> {
+  // El backend excluye los ATENDIDO del filtro sla; POR_VENCER incluye CRITICO.
+  const [vencidos, porVencer] = await Promise.all([
+    listarReclamos({ sla: 'VENCIDO', orden: 'ANTIGUOS', pagina: 0, tamano: TAMANO_MAXIMO }),
+    listarReclamos({ sla: 'POR_VENCER', orden: 'ANTIGUOS', pagina: 0, tamano: TAMANO_MAXIMO }),
   ]);
-  const expedientes = [...enEvaluacion.contenido, ...solicitadas.contenido]
-    .sort((a, b) => b.fechaRegistro.localeCompare(a.fechaRegistro))
-    .map(aCaso);
-  return [...RECLAMOS_DEMO, ...expedientes];
+  const urgencia = (r: ReclamoResumen) => r.diasHabilesRestantes ?? Number.NEGATIVE_INFINITY;
+  return [...vencidos.contenido, ...porVencer.contenido]
+    .sort((a, b) => urgencia(a) - urgencia(b))
+    .map(aCasoReclamo);
+}
+
+/** M2 no guarda el nombre del cliente: se lee del pedido en M1 (una consulta por pedido distinto). */
+async function nombresPorPedido(pedidos: string[]): Promise<Map<string, string>> {
+  const unicos = [...new Set(pedidos)];
+  const nombres = await Promise.all(
+    unicos.map((id) =>
+      obtenerPedido(id)
+        .then((p) => p.contacto.nombreCompleto)
+        .catch(() => '—'),
+    ),
+  );
+  return new Map(unicos.map((id, i) => [id, nombres[i]]));
+}
+
+async function casosDevoluciones(): Promise<CasoPrioritario[]> {
+  const estados: EstadoDevolucion[] = ['EN_EVALUACION', 'SOLICITADA'];
+  const listados = await Promise.all(
+    estados.map((estado) =>
+      listarDevoluciones({ estado, orden: 'ANTIGUOS', pagina: 0, tamano: TAMANO_MAXIMO }),
+    ),
+  );
+  const expedientes = listados.flatMap((l) => l.contenido);
+  const nombres = await nombresPorPedido(expedientes.map((d) => d.pedidoId));
+  return expedientes.map((d) => aCasoDevolucion(d, nombres.get(d.pedidoId) ?? '—'));
+}
+
+/** Primero los reclamos por SLA (más urgentes antes), luego los expedientes de F3 más antiguos. */
+export async function obtenerCasosPrioritarios(): Promise<CasosPrioritarios> {
+  const [reclamos, devoluciones] = await Promise.allSettled([casosReclamos(), casosDevoluciones()]);
+  if (reclamos.status === 'rejected' && devoluciones.status === 'rejected') throw reclamos.reason;
+
+  const avisos: string[] = [];
+  if (reclamos.status === 'rejected') avisos.push('No se pudieron cargar los reclamos.');
+  if (devoluciones.status === 'rejected') avisos.push('No se pudieron cargar las devoluciones y cambios.');
+
+  return {
+    casos: [
+      ...(reclamos.status === 'fulfilled' ? reclamos.value : []),
+      ...(devoluciones.status === 'fulfilled' ? devoluciones.value : []),
+    ],
+    avisos,
+  };
 }

@@ -8,6 +8,7 @@ import 'dayjs/locale/es';
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
 import '@mantine/dates/styles.css';
+import '@mantine/charts/styles.css';
 import './theme/global.css';
 
 import { theme } from './theme';

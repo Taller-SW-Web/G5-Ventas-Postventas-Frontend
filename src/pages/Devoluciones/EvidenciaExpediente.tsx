@@ -1,11 +1,12 @@
 // Bloque "Evidencia" del Mockup 06 y sus vistas previas (Overlay / Evidencia Foto y Evidencia PDF).
 import { useState, type ReactNode } from 'react';
-import { Box, Button, Center, Group, Image, Modal, Paper, SimpleGrid, Stack, Text } from '@mantine/core';
+import { Anchor, Box, Button, Center, Group, Image, Modal, Paper, SimpleGrid, Stack, Text } from '@mantine/core';
 import iconoDocumento from '@/assets/devoluciones/documento.svg';
 import iconoFotoGrande from '@/assets/devoluciones/foto-grande.svg';
 import iconoFoto from '@/assets/devoluciones/foto.svg';
 import iconoPdf from '@/assets/devoluciones/pdf.svg';
-import type { DevolucionDetalle, Evidencia } from '@/types/devolucion';
+import type { Evidencia } from '@/types/devolucion';
+import type { Expediente } from './expediente';
 import { TarjetaPanel } from './PanelesExpediente';
 import { dia } from './formato';
 
@@ -39,7 +40,7 @@ function TarjetaEvidencia({ evidencia, onAbrir }: { evidencia: Evidencia; onAbri
   );
 }
 
-/** Lo que se ve cuando el archivo no se puede mostrar (datos de prueba o archivo no disponible). */
+/** Lo que se ve cuando el archivo no se puede mostrar (almacén de evidencias no disponible). */
 function MarcadorFoto() {
   return (
     <Stack align="center" gap={6} py={48}>
@@ -56,10 +57,10 @@ function MarcadorFoto() {
   );
 }
 
-function MarcadorPdf({ expediente: e }: { expediente: DevolucionDetalle }) {
+function MarcadorPdf({ expediente: { devolucion: e, pedido } }: { expediente: Expediente }) {
   const filas: [string, string][] = [
     ['Pedido', e.pedidoId],
-    ['Cliente', e.nombreCliente ?? '—'],
+    ['Cliente', pedido?.contacto.nombreCompleto ?? '—'],
     ['Fecha', dia(e.fechaRegistro)],
   ];
   return (
@@ -100,7 +101,7 @@ function VistaPrevia({
   onCerrar,
 }: {
   evidencia: Evidencia | null;
-  expediente: DevolucionDetalle;
+  expediente: Expediente;
   onCerrar: () => void;
 }) {
   const [fallo, setFallo] = useState(false);
@@ -129,11 +130,16 @@ function VistaPrevia({
             )}
           </Box>
         ) : conArchivo ? (
-          <iframe src={evidencia.url} title="Comprobante adjunto" style={{ width: '100%', height: 420, border: 0 }} />
+          <iframe src={evidencia.url} title="Comprobante adjunto" style={{ width: '100%', height: 420, border: 0 }} onError={() => setFallo(true)} />
         ) : (
           <MarcadorPdf expediente={expediente} />
         ))}
-      <Group justify="flex-end" mt="lg">
+      <Group justify={evidencia?.url ? 'space-between' : 'flex-end'} mt="lg">
+        {evidencia?.url && (
+          <Anchor href={evidencia.url} target="_blank" rel="noreferrer" size="sm">
+            Abrir el archivo original
+          </Anchor>
+        )}
         <Button color="ink" w={180} onClick={onCerrar}>
           Cerrar
         </Button>
@@ -142,9 +148,9 @@ function VistaPrevia({
   );
 }
 
-export function EvidenciaExpediente({ expediente }: { expediente: DevolucionDetalle }) {
+export function EvidenciaExpediente({ expediente }: { expediente: Expediente }) {
   const [abierta, setAbierta] = useState<Evidencia | null>(null);
-  const evidencias = expediente.evidencias ?? [];
+  const evidencias = expediente.devolucion.evidencias ?? [];
 
   return (
     <TarjetaPanel titulo="Evidencia">

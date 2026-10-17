@@ -1,4 +1,5 @@
 // Se muestra cuando el token no existe o no tiene el rol ADMIN_VENTAS (guía frontend 4).
+import { Link } from 'react-router-dom';
 import { Button, Center, Stack, Text, Title } from '@mantine/core';
 
 export function AccesoDenegadoPage() {
@@ -11,9 +12,12 @@ export function AccesoDenegadoPage() {
         <Text c="dimmed">
           Necesitas iniciar sesión con una cuenta de Gestor de ventas para ver esta sección.
         </Text>
+        <Button component={Link} to="/ingresar">
+          Ingresar con mi token
+        </Button>
         {urlLogin && (
-          <Button component="a" href={urlLogin}>
-            Iniciar sesión
+          <Button component="a" href={urlLogin} variant="default">
+            Iniciar sesión en Seguridad
           </Button>
         )}
       </Stack>
