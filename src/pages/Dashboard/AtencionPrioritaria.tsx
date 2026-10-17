@@ -1,35 +1,41 @@
-// Atención prioritaria (Mockup 01, 7.2): reclamos vencidos y por vencer, desde la bandeja 2.10.
-// Devoluciones y cambios se sumarán cuando F3 tenga un listado general (2.4 hoy exige clienteId).
+// Panel "Atención prioritaria" del Dashboard (Mockup 01, 7.2): muestra los casos más urgentes.
+// "Ver" abre la pantalla Atención prioritaria filtrada por el tipo del caso, con su detalle abierto (7.3);
+// "Ver todas" la abre sin filtro (7.4). La lista se arma en pages/AtencionPrioritaria/casos.ts.
 import { useNavigate } from 'react-router-dom';
-import { Button, Group, Paper, Stack, Text, Title } from '@mantine/core';
+import { Badge, Button, Group, Paper, Stack, Table, Text, Title } from '@mantine/core';
 import { EstadoBadge } from '@/components/EstadoBadge';
 import { EstadoCarga } from '@/components/EstadoCarga';
 import { useConsulta } from '@/hooks/useConsulta';
-import { listarReclamos } from '@/services/reclamos';
-import type { ReclamoResumen } from '@/types/reclamo';
-import { ETIQUETA_MOTIVO, textoSlaCorto } from '../Reclamos/formato';
+import {
+  ETIQUETA_SITUACION,
+  ETIQUETA_TIPO_CASO,
+  RUTA_ATENCION_PRIORITARIA,
+  cargarCasosPrioritarios,
+  contarPorTipo,
+  textoConteo,
+  type ResultadoCasos,
+} from '../AtencionPrioritaria/casos';
+import { dia } from '../Reclamos/formato';
+import type { TipoCaso } from '@/types/reclamo';
 
 const MAXIMO = 5;
-
-async function cargarPrioritarios(): Promise<ReclamoResumen[]> {
-  // Los más antiguos primero: son los que vencieron (o vencen) antes
-  const [vencidos, porVencer] = await Promise.all([
-    listarReclamos({ sla: 'VENCIDO', orden: 'ANTIGUOS', tamano: MAXIMO }),
-    listarReclamos({ sla: 'POR_VENCER', orden: 'ANTIGUOS', tamano: MAXIMO }),
-  ]);
-  return [...vencidos.contenido, ...porVencer.contenido].slice(0, MAXIMO);
-}
+const TIPOS: TipoCaso[] = ['RECLAMO', 'DEVOLUCION', 'CAMBIO'];
 
 export function AtencionPrioritaria() {
   const navigate = useNavigate();
-  const consulta = useConsulta(cargarPrioritarios, []);
+  const consulta = useConsulta(cargarCasosPrioritarios, []);
 
   return (
     <Paper withBorder radius="md" p="md" h="100%">
-      <Group justify="space-between" mb="sm">
-        <Title order={3}>Atención prioritaria</Title>
-        <Button size="xs" variant="subtle" onClick={() => navigate('/admin/postventa/reclamos?sla=POR_VENCER')}>
-          Ver todas
+      <Group justify="space-between" align="flex-start" mb="xs" wrap="nowrap">
+        <div>
+          <Title order={3}>Atención prioritaria</Title>
+          <Text size="sm" c="dimmed">
+            Reclamos por SLA y expedientes de postventa pendientes
+          </Text>
+        </div>
+        <Button size="xs" variant="subtle" onClick={() => navigate(RUTA_ATENCION_PRIORITARIA)}>
+          Ver todas →
         </Button>
       </Group>
       <EstadoCarga
@@ -37,42 +43,69 @@ export function AtencionPrioritaria() {
         error={consulta.error}
         datos={consulta.datos}
         onReintentar={consulta.recargar}
-        mensajeVacio="No hay reclamos vencidos ni por vencer."
+        esVacio={(r: ResultadoCasos) => r.casos.length === 0}
+        mensajeVacio="No hay casos que requieran atención prioritaria."
       >
-        {(reclamos) => (
-          <Stack gap="xs">
-            {reclamos.map((r) => (
-              <Group key={r.codigoSeguimiento} justify="space-between" wrap="nowrap" gap="sm">
-                <Stack gap={0} style={{ minWidth: 0 }}>
-                  <Text size="sm" fw={600}>
-                    Reclamo {r.codigoSeguimiento}
-                  </Text>
-                  <Text size="xs" c="dimmed" truncate>
-                    {r.nombreConsumidor ?? '—'} · {ETIQUETA_MOTIVO[r.motivo]}
-                  </Text>
-                </Stack>
-                <Group gap="xs" wrap="nowrap">
-                  {r.estadoSla && (
-                    <EstadoBadge
-                      entidad="sla"
-                      estado={r.estadoSla}
-                      texto={textoSlaCorto(r.estadoSla, r.diasHabilesRestantes)}
-                      size="sm"
-                      tt="none"
-                    />
-                  )}
-                  <Button
-                    size="xs"
-                    variant="default"
-                    onClick={() => navigate(`/admin/postventa/reclamos?codigo=${r.codigoSeguimiento}`)}
-                  >
-                    Ver
-                  </Button>
-                </Group>
+        {({ casos }) => {
+          const conteo = contarPorTipo(casos);
+          return (
+            <Stack gap="sm">
+              <Group gap="xs">
+                {TIPOS.map((t) => (
+                  <Badge key={t} variant="light" color="orange" tt="none">
+                    {textoConteo(conteo[t], t)}
+                  </Badge>
+                ))}
               </Group>
-            ))}
-          </Stack>
-        )}
+              <Table verticalSpacing="xs" highlightOnHover>
+                <Table.Thead bg="cloud.2">
+                  <Table.Tr>
+                    <Table.Th>Código</Table.Th>
+                    <Table.Th>Tipo</Table.Th>
+                    <Table.Th>Estado</Table.Th>
+                    <Table.Th>Fecha límite</Table.Th>
+                    <Table.Th>Acción</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {casos.slice(0, MAXIMO).map((c) => (
+                    <Table.Tr key={c.codigo}>
+                      <Table.Td>
+                        <Text size="sm" fw={600}>
+                          {c.codigo}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>{ETIQUETA_TIPO_CASO[c.tipo]}</Table.Td>
+                      <Table.Td>
+                        <EstadoBadge
+                          entidad="situacion"
+                          estado={c.situacion}
+                          texto={ETIQUETA_SITUACION[c.situacion]}
+                          size="sm"
+                          tt="none"
+                        />
+                      </Table.Td>
+                      <Table.Td>{c.fechaLimite ? dia(c.fechaLimite.slice(0, 10)) : '—'}</Table.Td>
+                      <Table.Td>
+                        <Button
+                          size="xs"
+                          variant="default"
+                          onClick={() =>
+                            navigate(
+                              `${RUTA_ATENCION_PRIORITARIA}?tipo=${c.tipo}&codigo=${encodeURIComponent(c.codigo)}`,
+                            )
+                          }
+                        >
+                          Ver
+                        </Button>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Stack>
+          );
+        }}
       </EstadoCarga>
     </Paper>
   );
