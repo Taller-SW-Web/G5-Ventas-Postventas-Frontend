@@ -1,25 +1,40 @@
-// "Satisfacción del cliente" del Mockup 09 (distribución por estrellas, Detalle CSAT y vista Satisfacción).
-// Corresponde a F5 — Johan (guía frontend, sección 12). Espacio reservado: Johan reemplaza este archivo.
-// Necesita un endpoint de consulta de calificaciones (2.7 solo registra, POST).
-import { Alert, Button, Group, Paper, Text, Title } from '@mantine/core';
+import { Button, Group, Paper, Progress, RingProgress, Stack, Text, Title } from '@mantine/core';
+import { EstadoCarga } from '@/components/EstadoCarga';
+import { useCalificaciones } from './ProveedorCalificaciones';
+import { resumenSatisfaccion } from './consultaCalificaciones';
+import { csat } from './reportes';
 
 export function SeccionSatisfaccion() {
+  const { consulta, abrir } = useCalificaciones();
   return (
     <Paper withBorder radius="md" p="md" h="100%">
-      <Group justify="space-between" align="flex-start" mb="md">
-        <div>
-          <Title order={3}>Satisfacción del cliente</Title>
-          <Text size="sm" c="dimmed">
-            Distribución de calificaciones de 1 a 5
-          </Text>
-        </div>
-        <Button variant="default" size="xs" disabled>
-          Ver detalle
-        </Button>
+      <Group justify="space-between" mb="md">
+        <Title order={3}>Satisfacción del cliente</Title>
+        <Button variant="default" size="xs" onClick={() => abrir('satisfaccion')}>Ver detalle</Button>
       </Group>
-      <Alert color="blue" variant="light" title="Todavía no disponible">
-        Sección de F5 (calificaciones). Se completará cuando exista la consulta de calificaciones en el contrato.
-      </Alert>
+      <EstadoCarga {...consulta} onReintentar={consulta.recargar}
+        esVacio={(d) => d.resumen.total === 0} mensajeVacio="No hay calificaciones para este periodo y canal.">
+        {(datos) => {
+          const resumen = resumenSatisfaccion(datos);
+          return (
+            <Group align="center" wrap="wrap" gap="lg">
+              <Stack gap="sm" style={{ flex: '1 1 180px' }}>
+                {resumen.distribucion.map(({ puntuacion, porcentaje }) => (
+                  <Group key={puntuacion} gap="sm" wrap="nowrap">
+                    <Text size="sm" w={26}>{puntuacion} ★</Text>
+                    <Progress value={porcentaje} color="orange.7" style={{ flex: 1 }}
+                      aria-label={puntuacion + ' estrellas: ' + porcentaje + '%'} />
+                    <Text size="xs" c="dimmed" w={42} ta="right">{porcentaje}%</Text>
+                  </Group>
+                ))}
+              </Stack>
+              <RingProgress size={150} thickness={12}
+                sections={[{ value: (resumen.promedio ?? 0) / 5 * 100, color: 'orange.7' }]}
+                label={<Text ta="center" fw={700}>{csat(resumen.promedio)}</Text>} />
+            </Group>
+          );
+        }}
+      </EstadoCarga>
     </Paper>
   );
 }

@@ -1,117 +1,71 @@
-# Ventanas de calificaciones (Johan)
+# Calificaciones (Johan) — Mockup 09
 
-Dos componentes visuales del Mockup 09, para montar sobre el panel general de Fabrizio.
-No consultan servicios ni modifican datos. Las propiedades son modelos de presentación,
-no contratos de un endpoint.
+La ruta /admin/reportes consulta GET /api/v2/csat usando apiPostventa, el cliente
+HTTP compartido del proyecto. Conserva la configuración del Gateway y el token de sesión.
+No importa los datos de demostración en la pantalla del Gestor.
 
-## Archivos
+## Organización
 
-- `DetalleSatisfaccion/`: componente, propiedades, CSS y exportación. Medida de escritorio: 780 × 560 px.
-- `ComentariosClientes/`: componente, propiedades, CSS y exportación. Medida de escritorio: 900 × 590 px.
-- `compartido/VentanaCalificaciones.*`: modal Mantine con título accesible, contexto de filtros y cierre.
-- `calificaciones.types.ts`: contexto aplicado, resumen y comentarios.
-- `datos/calificaciones.ejemplo.ts`: ejemplos del Figma, separados de los servicios.
-- `preview/VistaPreviaCalificaciones.tsx`: comprobación manual solo en desarrollo.
-- `src/assets/calificaciones/separador-comentarios.svg`: separador original del Figma (852 × 1 px).
+- src/types/consultaCalificaciones.ts: respuesta y filtros de GET CSAT.
+- src/services/calificaciones.ts: registro existente y consulta del Gestor.
+- consultaCalificaciones.ts: convierte puntaje a puntuacion y cantidades a porcentajes.
+- ProveedorCalificaciones.tsx: consulta compartida, filtros, apertura de ventanas y paginación.
+- SeccionSatisfaccion.tsx y SeccionComentarios.tsx: bloques F5 del panel.
+- DetalleSatisfaccion/ y ComentariosClientes/: ventanas visuales reutilizables.
+- compartido/VentanaCalificaciones.*: marco, selectores y cierre de ambos modales.
 
-## Probar sin modificar el panel
+## Flujo integrado
 
-Desde la raíz del frontend:
+1. El panel conserva los filtros aplicados de Fabrizio (periodo y canal).
+2. Se envían desde y hasta como fechas AAAA-MM-DD. Todos omite el parámetro canal.
+3. La consulta del panel trae cinco respuestas recientes y el resumen completo del filtro.
+4. Ver detalle abre satisfacción con ese resumen. El promedio viene del servidor;
+   los porcentajes usan resumen.distribucion / resumen.total, nunca la página de comentarios.
+5. Ver todos y cada botón Ver abren la misma lista general del prototipo.
+   La ventana consulta páginas de ocho respuestas; pagina comienza en cero en la API.
+6. Cambiar periodo o canal desde un modal actualiza también los filtros del panel
+   y reinicia la lista en la primera página. Cerrar conserva los filtros.
 
-```powershell
-npm.cmd run dev
-```
+La respuesta se toma de ListadoCalificacionesResponse del backend. Su comentario
+indica que aún debe reflejarse en el contrato escrito de la documentación.
+Los comentarios nulos o vacíos se presentan como Sin comentario; siguen siendo
+calificaciones válidas y forman parte de la distribución.
 
-Abrir `http://localhost:5173/preview/calificaciones.html` (o el puerto que indique Vite).
-La vista incluye los botones Ver detalle, Ver todos, Ver y Alternar sin datos.
-Es una entrada de desarrollo independiente; no se registra en `App.tsx` y el build
-normal de producción conserva únicamente la entrada del portal.
+## Estados
 
-## Integrar con Fabrizio
+Se reutiliza EstadoCarga para carga, error y Reintentar. Los filtros sin respuestas
+muestran el estado vacío. Un fallo no se reemplaza por datos de ejemplo.
+El modal de satisfacción recibe el estado de la consulta del panel; la lista paginada
+tiene su propio estado, por lo que pasar de página no cambia las cinco respuestas recientes.
 
-El panel controla una sola ventana activa y comparte con ambos modales los filtros activos.
-Los desplegables de los modales aplican su selección mediante `onCambiarContexto`. El panel debe actualizar el contexto y los datos juntos; no basta con cambiar la etiqueta del filtro.
+Mantine mantiene el foco dentro de la ventana, permite Escape y cierre por botón.
+No se cierra al pulsar fuera. Las tablas permiten desplazamiento horizontal en móvil.
 
-Ejemplo dentro del componente del panel (no sustituye su implementación):
+## Comprobar con el backend real
 
-```tsx
-import { useState } from 'react';
-import { DetalleSatisfaccion } from './DetalleSatisfaccion';
-import { ComentariosClientes } from './ComentariosClientes';
+1. Arrancar el Gateway y Postventa con acceso a la base y una sesión ADMIN_VENTAS.
+   Para conexión directa local, dejar VITE_GATEWAY_URL vacío y configurar
+   VITE_API_POSTVENTA_URL con el puerto real de Postventa (8082 o el configurado).
+2. Ejecutar npm.cmd run dev y abrir /admin/reportes.
+3. Aplicar un periodo con calificaciones y comprobar promedio, estrellas y comentarios.
+4. Abrir ambos modales, cambiar canal y periodo, avanzar páginas, cerrar y volver a abrir.
+5. Revisar en Red del navegador GET /api/v2/csat y sus filtros. Sin resultados,
+   no debe aparecer un promedio inventado. Ante un fallo debe aparecer Reintentar.
 
-const [ventana, setVentana] = useState<'satisfaccion' | 'comentarios' | null>(null);
+El panel mantiene la consulta de métricas 2.12 de Fabrizio para los indicadores
+operativos. Ambas rutas deben estar disponibles en el entorno que se pruebe.
 
-// Botón Ver detalle del bloque de satisfacción:
-// onClick={() => setVentana('satisfaccion')}
-// Botones Ver todos y Ver de comentarios, y la fila cuando corresponda:
-// onClick={() => setVentana('comentarios')}
+## Vista previa de diseño
 
-<DetalleSatisfaccion
-  abierto={ventana === 'satisfaccion'}
-  contexto={contextoAplicado}
-  opcionesPeriodos={periodosDisponibles}
-  onCambiarContexto={aplicarContextoCalificaciones}
-  resumen={resumenSatisfaccion}
-  onCerrar={() => setVentana(null)}
-/>
-<ComentariosClientes
-  abierto={ventana === 'comentarios'}
-  contexto={contextoAplicado}
-  opcionesPeriodos={periodosDisponibles}
-  onCambiarContexto={aplicarContextoCalificaciones}
-  comentarios={comentariosDelPeriodoYCanal}
-  onCerrar={() => setVentana(null)}
-/>
-```
+/preview/calificaciones.html sigue siendo una entrada exclusiva de desarrollo, con
+ejemplos del Figma. No consulta la API ni se incorpora al build normal de producción.
+No debe usarse para validar la integración real.
 
-`contextoAplicado`, `resumenSatisfaccion` y `comentariosDelPeriodoYCanal` representan
-los datos que administra el panel. `periodosDisponibles` es la lista de etiquetas del selector y `aplicarContextoCalificaciones` actualiza el filtro activo y su consulta. Para la fase visual se pueden usar los ejemplos
-exportados desde `datos/calificaciones.ejemplo.ts`.
+## Validación de esta conexión
 
-La ventana de comentarios no recibe una fila seleccionada: Ver todos, Ver y la fila
-abren la misma lista general en el prototipo. El panel entrega la lista ya filtrada;
-el modal no interpreta por su cuenta la etiqueta del periodo ni consulta al backend.
-
-## Comportamiento
-
-- Centrado sobre la ventana del navegador, sin ruta nueva y sin oscurecer el fondo.
-- Transición de desvanecimiento de 150 ms; esquinas de 16 px.
-- Cerrar llama a `onCerrar`; no se cierra al pulsar fuera.
-- Mantine conserva el foco dentro del diálogo, permite Escape y devuelve el foco al disparador.
-- Las medidas se limitan al espacio disponible. En móvil, satisfacción apila sus tarjetas
-  y comentarios permite desplazamiento horizontal dentro de la tabla.
-- `promedio: null` y `distribucion: []` muestran ausencia de calificaciones.
-- `comentarios: []` muestra ausencia de comentarios.
-- La fecha de cada comentario usa `AAAA-MM-DD` y se presenta sin conversión de zona horaria.
-
-## Fase visual y pendientes
-
-Los datos de demostración conservan los valores del Figma: su promedio 4.62 no coincide
-con la distribución de estrellas (4.04 ponderado). No deben tratarse como resultados reales.
-Al integrar servicios, promedio y distribución deben provenir de la misma consulta.
-
-Falta montar estos componentes en el panel de Fabrizio y conectar datos reales cuando
-estén definidos los endpoints. Su archivo principal y las rutas del portal no se modifican aquí.
-
-## Referencias
-
-- `G5-Ventas-Postventas/guias/frontend/estructura-frontend.md`
-- `G5-Ventas-Postventas/guias/frontend/guia-frontend.md`, secciones 1.2 y 3.
-- `G5-Ventas-Postventas/diseno/mockups/Mockup 09 - Calificaciones y Reportes.md`
-- Figma: archivo `J2KeLP6nl8qlDunNNUAC52`, página `150:255`, ventanas `162:373` y `162:418`.
-
-## Selectores dentro de las ventanas
-
-Ambas ventanas muestran los desplegables Periodo y Canal. Canal ofrece Todos,
-Marketplace, Chatbot y Retail. Los periodos los entrega Fabrizio mediante
-`opcionesPeriodos`; no están fijados en los componentes del producto.
-
-`onCambiarContexto(nuevoContexto)` comunica la selección al panel. El padre conserva
-el estado y proporciona los resultados del nuevo filtro a ambas ventanas.
-La selección se conserva al cerrar y pasar de satisfacción a comentarios.
-Los menús se montan dentro del modal para respetar el foco de teclado.
-
-En la vista previa se filtran comentarios de demostración por fecha y canal.
-Últimos 15 días usa como referencia el 30 de septiembre de 2026; Agosto no tiene
-comentarios en la muestra y permite comprobar el estado vacío.
-Los cambios se aplican al seleccionar, sin añadir un botón Aplicar dentro del modal.
+- npm.cmd run build: aprobado.
+- Navegador con una API temporal según el DTO del backend: filtros compartidos,
+  resumen sobre todo el filtro, página siguiente, reinicio al cambiar canal,
+  respuestas sin comentario, estado vacío y recuperación mediante Reintentar.
+- Pendiente: comprobar el flujo contra Postventa y la base reales encendidos.
+  La API temporal de comprobación no se añade al repositorio ni a la configuración.
