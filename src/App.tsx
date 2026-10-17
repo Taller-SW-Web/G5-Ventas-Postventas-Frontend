@@ -10,6 +10,7 @@ import { DashboardPage } from '@/pages/Dashboard';
 import { DetallePedidoPage } from '@/pages/DetallePedido';
 import { DevolucionesPage } from '@/pages/Devoluciones';
 import { HubPostventaPage } from '@/pages/HubPostventa';
+import { IngresarPage } from '@/pages/Ingresar';
 import { NoEncontradoPage } from '@/pages/NoEncontrado';
 import { PedidosPage } from '@/pages/Pedidos';
 import { ReclamosPage } from '@/pages/Reclamos';
@@ -21,6 +22,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/admin/dashboard" replace />} />
         <Route path="/acceso-denegado" element={<AccesoDenegadoPage />} />
+        <Route path="/ingresar" element={<IngresarPage />} />
 
         <Route path="/admin" element={<RutaProtegida />}>
           <Route element={<LayoutGestor />}>
