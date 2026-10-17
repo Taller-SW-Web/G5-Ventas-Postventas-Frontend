@@ -1,4 +1,5 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Title,
   Text,
@@ -17,16 +18,29 @@ import {
   ActionIcon,
   Textarea,
   Alert,
+  Modal,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { EstadoBadge } from '@/components/EstadoBadge';
 import { ModalConfirmacion } from '@/components/ModalConfirmacion';
 import { EstadoCarga } from '@/components/EstadoCarga';
 import { useConsulta } from '@/hooks/useConsulta';
-import { listarAnulacionesPendientes, resolverAnulacion } from '@/services/anulaciones';
+import {
+  listarAnulacionesPendientes,
+  resolverAnulacion,
+  solicitarAnulacion,
+} from '@/services/anulaciones';
 import { ApiError } from '@/services/api';
 import { CASOS_MOCKUP_04, type ItemBandejaAnulacion } from './datosMockup04';
 import type { ListadoAnulacionesPendientes } from '@/types/pedido';
+
+const MOTIVOS_ANULACION_GESTOR = [
+  { value: 'SOLICITUD_CLIENTE', label: 'Solicitud del cliente (arrepentimiento / cambio de opinión)' },
+  { value: 'ERROR_DIRECCION', label: 'Error en la dirección de entrega' },
+  { value: 'PRODUCTO_EQUIVOCADO', label: 'Producto equivocado o error en la compra' },
+  { value: 'PAGO_NO_COMPLETADO', label: 'Pago no completado o timeout' },
+  { value: 'ENTREGA_FALLIDA_DEFINITIVA', label: 'Entrega fallida definitiva en ruta' },
+];
 
 function parsearFecha(f?: string): number {
   if (!f) return 0;
@@ -46,11 +60,30 @@ function parsearFecha(f?: string): number {
 }
 
 export function AnulacionesPage() {
+  // Query param ?pedidoId= desde DetallePedido o navegación externa
+  const [searchParams] = useSearchParams();
+  const pedidoIdParam = searchParams.get('pedidoId');
+
   // Estado de filtros
-  const [busqueda, setBusqueda] = useState('');
+  const [busqueda, setBusqueda] = useState(pedidoIdParam || '');
   const [filtroEstado, setFiltroEstado] = useState<string | null>('Todos');
   const [filtroCanal, setFiltroCanal] = useState<string | null>('Todos');
   const [orden, setOrden] = useState<string | null>('recientes');
+
+  // Modal Iniciar Anulación (Endpoint 1.7)
+  const [modalSolicitarAbierto, setModalSolicitarAbierto] = useState(false);
+  const [pedidoIdSolicitud, setPedidoIdSolicitud] = useState(pedidoIdParam || '');
+  const [motivoSolicitud, setMotivoSolicitud] = useState<string | null>('SOLICITUD_CLIENTE');
+  const [comentarioSolicitud, setComentarioSolicitud] = useState('');
+  const [solicitandoAnulacion, setSolicitandoAnulacion] = useState(false);
+
+  useEffect(() => {
+    if (pedidoIdParam) {
+      setBusqueda(pedidoIdParam);
+      setPedidoIdSolicitud(pedidoIdParam);
+      setModalSolicitarAbierto(true);
+    }
+  }, [pedidoIdParam]);
 
   // Paginación local
   const [pagina, setPagina] = useState(1);
@@ -278,6 +311,75 @@ export function AnulacionesPage() {
     }
   };
 
+  // Enviar Solicitud de Anulación (Endpoint 1.7 POST /api/v1/pedidos/{pedidoId}/anulaciones)
+  const handleEnviarSolicitudAnulacion = async () => {
+    if (!pedidoIdSolicitud.trim() || !motivoSolicitud) return;
+    setSolicitandoAnulacion(true);
+
+    try {
+      if (usandoDatosEnVivo) {
+        const resp = await solicitarAnulacion(pedidoIdSolicitud.trim(), {
+          motivo: motivoSolicitud,
+          comentario: comentarioSolicitud.trim() || undefined,
+        });
+
+        if (resp.autorizacionRequerida) {
+          notifications.show({
+            title: 'Solicitud Registrada (202 Accepted)',
+            message: `El pedido ${resp.pedidoId} se encuentra en preparación. Se generó la solicitud ${resp.solicitudAnulacionId} para evaluación del Gestor.`,
+            color: 'blue',
+          });
+        } else {
+          notifications.show({
+            title: 'Anulación Directa Exitosa (200 OK)',
+            message: `El pedido ${resp.pedidoId} fue anulado exitosamente. ${resp.solicitudReembolsoGenerada ? 'Se originó solicitud de reembolso en F4.' : ''}`,
+            color: 'green',
+          });
+        }
+        recargar();
+      } else {
+        // En modo demostración local
+        const nuevoCaso: ItemBandejaAnulacion = {
+          solicitudAnulacionId: `ANUL-${Math.floor(1000 + Math.random() * 9000)}`,
+          pedidoId: pedidoIdSolicitud.trim(),
+          fecha: new Date().toLocaleDateString('es-PE'),
+          cliente: 'Cliente Demostración',
+          estadoPedido: 'EN_PREPARACION',
+          canal: 'MARKETPLACE',
+          motivo: motivoSolicitud,
+          autorizacion: 'Pendiente',
+          solicitud: 'PENDIENTE',
+          solicitante: 'Cliente',
+          efectos: {
+            estadoPedido: 'Pendiente de decisión',
+            stock: 'Reintegrar si se aprueba',
+            despacho: 'Cancelar si se aprueba',
+            reembolso: 'Originar F4 si se aprueba',
+          },
+        };
+        setCasosLocales((prev) => [nuevoCaso, ...prev]);
+        notifications.show({
+          title: 'Solicitud Creada (Modo Demostración)',
+          message: `Se registró la solicitud para el pedido ${pedidoIdSolicitud.trim()} con motivo ${motivoSolicitud}.`,
+          color: 'blue',
+        });
+      }
+
+      setModalSolicitarAbierto(false);
+      setPedidoIdSolicitud('');
+      setComentarioSolicitud('');
+      setMotivoSolicitud('SOLICITUD_CLIENTE');
+    } catch (e: unknown) {
+      notifications.show({
+        title: 'Error al solicitar anulación',
+        message: e instanceof ApiError ? e.message : 'No se pudo comunicar la solicitud al servidor.',
+        color: 'red',
+      });
+    } finally {
+      setSolicitandoAnulacion(false);
+    }
+  };
+
   return (
     <Stack gap="lg">
       {/* Encabezado */}
@@ -290,6 +392,9 @@ export function AnulacionesPage() {
             Bandeja administrativa para evaluar y autorizar solicitudes de cancelación de pedidos (F2 - Mockup 04)
           </Text>
         </div>
+        <Button color="orange" onClick={() => setModalSolicitarAbierto(true)}>
+          Iniciar anulación
+        </Button>
       </Group>
 
       {/* Alerta de conexión */}
@@ -709,6 +814,59 @@ export function AnulacionesPage() {
           mt="xs"
         />
       </ModalConfirmacion>
+
+      {/* Modal Iniciar Solicitud de Anulación (1.7) */}
+      <Modal
+        opened={modalSolicitarAbierto}
+        onClose={() => setModalSolicitarAbierto(false)}
+        title="Iniciar Solicitud de Anulación (F2 - 1.7)"
+        size="md"
+        centered
+      >
+        <Stack gap="md">
+          <Text size="sm" c="dimmed">
+            Ingresa el código del pedido y selecciona el motivo formal tipificado en el catálogo para registrar la anulación.
+          </Text>
+
+          <TextInput
+            label="Código de Pedido"
+            placeholder="Ej. PED-2026-1041"
+            value={pedidoIdSolicitud}
+            onChange={(e) => setPedidoIdSolicitud(e.currentTarget.value)}
+            required
+          />
+
+          <Select
+            label="Motivo de anulación (Catálogo cerrado)"
+            data={MOTIVOS_ANULACION_GESTOR}
+            value={motivoSolicitud}
+            onChange={setMotivoSolicitud}
+            required
+          />
+
+          <Textarea
+            label="Comentario explicativo (Opcional)"
+            placeholder="Detalles adicionales sobre la anulación..."
+            value={comentarioSolicitud}
+            onChange={(e) => setComentarioSolicitud(e.currentTarget.value)}
+            minRows={3}
+          />
+
+          <Group justify="flex-end" mt="md">
+            <Button variant="default" onClick={() => setModalSolicitarAbierto(false)} disabled={solicitandoAnulacion}>
+              Cancelar
+            </Button>
+            <Button
+              color="orange"
+              onClick={handleEnviarSolicitudAnulacion}
+              loading={solicitandoAnulacion}
+              disabled={!pedidoIdSolicitud.trim() || !motivoSolicitud}
+            >
+              Enviar solicitud
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Stack>
   );
 }
