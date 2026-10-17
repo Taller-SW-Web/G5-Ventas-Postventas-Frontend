@@ -36,6 +36,8 @@ export interface ReembolsoResumen {
   intentos: number;
   ultimoResultado: string | null;
   fechaUltimoIntento: string | null;
+  /** No viene en 2.6b: lo completa la bandeja con el detalle del pedido (1.5). */
+  clienteNombre?: string | null;
 }
 
 export type ListadoReembolsos = Paginado<ReembolsoResumen>;

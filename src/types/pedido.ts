@@ -166,6 +166,10 @@ export interface AnulacionPendiente {
   pedidoId: string;
   motivo: MotivoAnulacion;
   fechaSolicitud: string;
+  /** Datos del pedido para la bandeja (mockup 04). */
+  canal?: Canal;
+  nombreCliente?: string | null;
+  estadoPedido?: EstadoPedido;
 }
 
 export type ListadoAnulacionesPendientes = Paginado<AnulacionPendiente>;
@@ -174,8 +178,8 @@ export type ListadoAnulacionesPendientes = Paginado<AnulacionPendiente>;
 export interface ResolverAnulacionRequest {
   decision: 'APROBADA' | 'RECHAZADA';
   autorizadorId: string;
-  /** Obligatorio si decision = RECHAZADA. */
-  comentario?: string;
+  /** Obligatorio en ambas decisiones (el backend lo valida con @NotBlank). */
+  comentario: string;
 }
 
 export interface ResolverAnulacionResponse {

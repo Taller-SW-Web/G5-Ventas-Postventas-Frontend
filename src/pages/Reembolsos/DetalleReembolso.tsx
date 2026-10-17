@@ -32,8 +32,10 @@ export function DetalleReembolso({ reembolso, autorizadoVisualmente, onClose, on
     ]} /></section>
       <section className="reembolsos-detail-card reembolsos-trace"><Title order={2}>Trazabilidad</Title><div className="reembolsos-detail-divider" /><ListaDatos valores={[['Cliente', reembolso.clienteNombre ?? '—'], ['Canal', canal(reembolso.canal)], ['Método de pago', reembolso.metodoPago ?? '—'], ['Clave idempotente', reembolso.claveIdempotencia]]} /></section>
       <section className="reembolsos-detail-card reembolsos-actions"><Title order={2}>Acciones disponibles</Title><div className="reembolsos-detail-divider" />
-        {reembolso.estado === 'PENDIENTE' && !autorizado && <Button onClick={() => onOpenModal('autorizar')}>Autorizar reembolso</Button>}
-        {reembolso.estado === 'PENDIENTE' && autorizado && <Button onClick={() => onOpenModal('ejecutar')}>Ejecutar reembolso</Button>}
+        {/* Sin intentos, el envío a la pasarela lo hace el sistema (M1 o el dictamen de F3); con un intento sin respuesta se reintenta con la misma clave */}
+        {reembolso.estado === 'PENDIENTE' && !enviado && <Text size="sm">En cola de envío a la pasarela. No requiere acción.</Text>}
+        {reembolso.estado === 'PENDIENTE' && enviado && !autorizado && <Button onClick={() => onOpenModal('autorizar')}>Autorizar reembolso</Button>}
+        {reembolso.estado === 'PENDIENTE' && enviado && autorizado && <Button onClick={() => onOpenModal('ejecutar')}>Ejecutar reembolso</Button>}
         {reembolso.estado === 'FALLIDO' && <><Button variant="default" onClick={() => onOpenModal('resultado')}>Consultar resultado</Button><Button onClick={() => onOpenModal('reintento')}>Reintento seguro</Button></>}
         {reembolso.estado === 'EXITOSO' && <Button className="reembolsos-success-action" variant="light" onClick={() => onOpenModal('resultado')}>Consultar resultado</Button>}
         <Button variant="default">Volver al pedido</Button><Button variant="subtle">Ver expediente origen</Button>

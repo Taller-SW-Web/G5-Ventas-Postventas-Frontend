@@ -1,9 +1,9 @@
 // Mockup 01 — Dashboard (F6). Responsable: Fabrizio
 // Indicadores de GET /api/v2/dashboard/metricas (2.12) con filtros de periodo (rango de fechas) y canal.
 // Ventas, ticket promedio, tendencia e importes por canal necesitan montos que 2.12 todavía no entrega:
-// se muestran como no disponibles (decisión del equipo hasta que el contrato los incluya).
+// se calculan con la bandeja de pedidos (1.4), ver cargarVentas en metricas.ts.
 import { useState, type ReactNode } from 'react';
-import { BarChart, DonutChart } from '@mantine/charts';
+import { AreaChart, BarChart, DonutChart } from '@mantine/charts';
 import { DatePickerInput } from '@mantine/dates';
 import {
   Box,
@@ -31,7 +31,9 @@ import {
   diferencia,
   entero,
   rangoDe,
+  soles,
   tasaAnulacion,
+  variacionPorcentual,
   tasaDevolucion,
   type DatosDashboard,
   type Rango,
@@ -167,7 +169,10 @@ function Dato({ etiqueta, valor }: { etiqueta: string; valor: string }) {
 }
 
 function Contenido({ datos, reclamosAbiertos }: { datos: DatosDashboard; reclamosAbiertos: number | null }) {
-  const { actual, anterior, porCanal } = datos;
+  const { actual, anterior, porCanal, ventas, ventasAnterior } = datos;
+  const ticket = (v: typeof ventas) => (v.vendidos > 0 ? v.monto / v.vendidos : null);
+  const pico = ventas.porDia.reduce((m, d) => (d.monto > m.monto ? d : m), { fecha: '', monto: 0 });
+  const variacionVentas = variacionPorcentual(ventas.monto, ventasAnterior.monto);
   const { pedidos } = actual;
   const enCurso = Math.max(0, pedidos.total - pedidos.entregados - pedidos.anulados);
   // 2.12 no separa pagados / despachados / pendientes: se muestra lo que el contrato sí entrega.
@@ -189,8 +194,22 @@ function Contenido({ datos, reclamosAbiertos }: { datos: DatosDashboard; reclamo
       </Text>
 
       <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }}>
-        <TarjetaKpi categoria="Ingresos" titulo="Ventas" valor="—" icono="↗" disponible={false} />
-        <TarjetaKpi categoria="Promedio" titulo="Ticket promedio" valor="—" icono="◇" disponible={false} />
+        <TarjetaKpi
+          categoria="Ingresos"
+          titulo="Ventas"
+          valor={soles(ventas.monto)}
+          icono="↗"
+          variacion={variacionVentas}
+          pie={`${entero(ventas.vendidos)} pedidos vendidos`}
+        />
+        <TarjetaKpi
+          categoria="Promedio"
+          titulo="Ticket promedio"
+          valor={ticket(ventas) === null ? '—' : soles(ticket(ventas) ?? 0)}
+          icono="◇"
+          variacion={variacionPorcentual(ticket(ventas), ticket(ventasAnterior))}
+          pie="Venta media por pedido"
+        />
         <TarjetaKpi
           categoria="Anulaciones"
           titulo="Tasa de anulación"
@@ -199,7 +218,7 @@ function Contenido({ datos, reclamosAbiertos }: { datos: DatosDashboard; reclamo
           variacion={diferencia(tasaAnulacion(actual), tasaAnulacion(anterior))}
           unidad="pp"
           menosEsMejor
-          pie="Anulados sobre pedidos pagados"
+          pie="Anulados sobre pedidos del periodo"
         />
         <TarjetaKpi
           categoria="Devoluciones"
@@ -227,16 +246,28 @@ function Contenido({ datos, reclamosAbiertos }: { datos: DatosDashboard; reclamo
             subtitulo="Evolución del periodo consolidada"
             extra={
               <Group gap="xs" wrap="nowrap">
-                <Dato etiqueta="Pico" valor="—" />
-                <Dato etiqueta="Variación" valor="—" />
+                <Dato etiqueta="Pico" valor={pico.monto > 0 ? soles(pico.monto) : '—'} />
+                <Dato
+                  etiqueta="Variación"
+                  valor={variacionVentas === null ? '—' : `${variacionVentas > 0 ? '+' : ''}${variacionVentas.toFixed(1)}%`}
+                />
               </Group>
             }
           >
-            <Box bg="cloud.2" p="xl" style={{ borderRadius: 'var(--mantine-radius-md)' }}>
+            {ventas.monto === 0 ? (
               <Text size="sm" c="dimmed" ta="center">
-                Aún no disponible: el servicio de métricas (2.12) todavía no entrega importes de venta por día.
+                Sin ventas en el periodo.
               </Text>
-            </Box>
+            ) : (
+              <AreaChart
+                h={240}
+                data={ventas.porDia.map((d) => ({ dia: fechaCorta(d.fecha).slice(0, 5), ventas: d.monto }))}
+                dataKey="dia"
+                series={[{ name: 'ventas', label: 'Ventas (S/)', color: 'orange.6' }]}
+                curveType="monotone"
+                valueFormatter={(n) => soles(n)}
+              />
+            )}
           </Bloque>
         </Grid.Col>
         <Grid.Col span={{ base: 12, lg: 5 }}>
@@ -246,21 +277,22 @@ function Contenido({ datos, reclamosAbiertos }: { datos: DatosDashboard; reclamo
         <Grid.Col span={{ base: 12, lg: 5 }}>
           <Bloque
             titulo="Ventas por canal"
-            subtitulo="Pedidos pagados por canal (los importes aún no están disponibles)"
-            extra={<Dato etiqueta="Total" valor={`${entero(pedidos.total)} pedidos`} />}
+            subtitulo="Importe vendido por canal en el periodo"
+            extra={<Dato etiqueta="Total" valor={soles(ventas.monto)} />}
           >
             {porCanal ? (
               <BarChart
                 h={240}
-                data={porCanal.map((c) => ({ canal: ETIQUETA_CANAL[c.canal], pedidos: c.pedidos }))}
+                data={porCanal.map((c) => ({ canal: ETIQUETA_CANAL[c.canal], ventas: ventas.porCanal[c.canal] }))}
                 dataKey="canal"
-                series={[{ name: 'pedidos', label: 'Pedidos pagados', color: 'orange.6' }]}
+                series={[{ name: 'ventas', label: 'Ventas (S/)', color: 'orange.6' }]}
                 tickLine="y"
+                valueFormatter={(n) => soles(n)}
                 withBarValueLabel
               />
             ) : (
               <Text size="sm" c="dimmed">
-                El filtro ya es un solo canal: {entero(pedidos.total)} pedidos pagados. Elige "Todos" para comparar.
+                El filtro ya es un solo canal: {soles(ventas.monto)} en {entero(ventas.vendidos)} pedidos. Elige "Todos" para comparar.
               </Text>
             )}
           </Bloque>
