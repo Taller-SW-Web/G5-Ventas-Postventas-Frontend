@@ -23,6 +23,7 @@ const OPCIONES_ESTADO = [
   { value: 'REGISTRADO', label: 'REGISTRADO' },
   { value: 'EN_PROCESO', label: 'EN PROCESO' },
   { value: 'ATENDIDO', label: 'ATENDIDO' },
+  { value: 'DERIVADO', label: 'DERIVADO' },
 ];
 
 /** Urgencia operativa (propuesta UX 01). "Por vencer" incluye los críticos (0 a 5 días hábiles). */

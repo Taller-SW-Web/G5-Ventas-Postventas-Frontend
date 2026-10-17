@@ -42,3 +42,13 @@ export async function sellarPaquete(pedidoId: string): Promise<AccionPedidoRespo
   );
   return data;
 }
+
+/**
+ * Detalle (1.5) de varios pedidos a la vez, para completar bandejas cuyo endpoint no trae cliente, canal ni
+ * estado del pedido (1.8 anulaciones pendientes, 2.6b reembolsos). Un pedido que no se pudo leer se omite.
+ */
+export async function detallesDePedidos(codigos: string[]): Promise<Map<string, PedidoDetalle>> {
+  const unicos = [...new Set(codigos)];
+  const detalles = await Promise.all(unicos.map((c) => obtenerPedido(c).catch(() => null)));
+  return new Map(detalles.filter((d): d is PedidoDetalle => d !== null).map((d) => [d.pedidoId, d]));
+}

@@ -31,6 +31,8 @@ import {
   solicitarAnulacion,
 } from '@/services/anulaciones';
 import { ApiError } from '@/services/api';
+import { detallesDePedidos } from '@/services/pedidos';
+import { sesionActual } from '@/services/auth';
 import { CASOS_MOCKUP_04, type ItemBandejaAnulacion } from './datosMockup04';
 import type { ListadoAnulacionesPendientes, MotivoAnulacion } from '@/types/pedido';
 
@@ -104,7 +106,16 @@ export function AnulacionesPage() {
 
   // Consulta al backend (1.8 GET /api/v1/pedidos/anulaciones/pendientes)
   const consultaBackend = useCallback(async (): Promise<ListadoAnulacionesPendientes> => {
-    return await listarAnulacionesPendientes({ pagina: pagina - 1, tamano: elementosPorPagina });
+    const listado = await listarAnulacionesPendientes({ pagina: pagina - 1, tamano: elementosPorPagina });
+    // 1.8 no trae cliente, canal ni estado del pedido: se completan con el detalle de cada pedido (1.5)
+    const pedidos = await detallesDePedidos(listado.contenido.map((a) => a.pedidoId));
+    return {
+      ...listado,
+      contenido: listado.contenido.map((a) => {
+        const p = pedidos.get(a.pedidoId);
+        return p ? { ...a, canal: p.canal, nombreCliente: p.contacto?.nombreCompleto ?? null, estadoPedido: p.estado } : a;
+      }),
+    };
   }, [pagina]);
 
   const { datos: datosBackend, cargando, error, recargar } = useConsulta(consultaBackend, [consultaBackend]);
@@ -118,9 +129,9 @@ export function AnulacionesPage() {
         solicitudAnulacionId: item.solicitudAnulacionId,
         pedidoId: item.pedidoId,
         fecha: item.fechaSolicitud,
-        cliente: 'Cliente Registrado',
-        estadoPedido: 'EN_PREPARACION',
-        canal: 'MARKETPLACE',
+        cliente: item.nombreCliente ?? '—',
+        estadoPedido: item.estadoPedido ?? 'EN_PREPARACION',
+        canal: item.canal ?? 'MARKETPLACE',
         motivo: item.motivo,
         autorizacion: 'Pendiente',
         solicitud: 'PENDIENTE',
@@ -193,7 +204,7 @@ export function AnulacionesPage() {
       if (usandoDatosEnVivo) {
         await resolverAnulacion(casoSeleccionado.pedidoId, casoSeleccionado.solicitudAnulacionId, {
           decision: 'APROBADA',
-          autorizadorId: 'ADMIN_VENTAS',
+          autorizadorId: sesionActual().usuarioId ?? 'ADMIN_VENTAS',
           comentario: comentarioAprobacion,
         });
         recargar();
@@ -270,7 +281,7 @@ export function AnulacionesPage() {
       if (usandoDatosEnVivo) {
         await resolverAnulacion(casoSeleccionado.pedidoId, casoSeleccionado.solicitudAnulacionId, {
           decision: 'RECHAZADA',
-          autorizadorId: 'ADMIN_VENTAS',
+          autorizadorId: sesionActual().usuarioId ?? 'ADMIN_VENTAS',
           comentario: comentarioRechazo,
         });
         recargar();
@@ -303,7 +314,7 @@ export function AnulacionesPage() {
     } catch (e: unknown) {
       notifications.show({
         title: 'Error al rechazar',
-        message: 'No se pudo comunicar el rechazo al servidor.',
+        message: e instanceof ApiError ? e.message : 'No se pudo comunicar el rechazo al servidor.',
         color: 'red',
       });
     } finally {
@@ -759,6 +770,7 @@ export function AnulacionesPage() {
         textoConfirmar="Confirmar aprobación"
         colorConfirmar="green"
         procesando={procesandoAccion}
+        confirmarDeshabilitado={comentarioAprobacion.trim() === ''}
         mensaje={
           <Text size="sm">
             ¿Confirmas la aprobación de la anulación para el pedido{' '}
@@ -777,6 +789,7 @@ export function AnulacionesPage() {
           placeholder="Ingrese justificación de la aprobación"
           value={comentarioAprobacion}
           onChange={(e) => setComentarioAprobacion(e.currentTarget.value)}
+          required
           mt="xs"
         />
       </ModalConfirmacion>
@@ -799,7 +812,7 @@ export function AnulacionesPage() {
             <Text span fw={700}>
               {casoSeleccionado?.pedidoId}
             </Text>{' '}
-            permanecerá en su estado actual (EN_PREPARACION) sin cancelaciones ni reembolsos.
+            permanecerá en su estado actual ({casoSeleccionado?.estadoPedido}) sin cancelaciones ni reembolsos.
           </Text>
         }
         onConfirmar={handleConfirmarRechazo}

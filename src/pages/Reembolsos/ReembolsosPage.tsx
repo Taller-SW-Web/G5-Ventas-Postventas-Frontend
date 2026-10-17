@@ -1,9 +1,12 @@
 import { useCallback, useState } from 'react';
 import { Button, Loader, Modal, Pagination, Select, Table, Text, TextInput, Title } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
+import { notifications } from '@mantine/notifications';
 import { EstadoBadge } from '@/components/EstadoBadge';
 import { EstadoCarga } from '@/components/EstadoCarga/EstadoCarga';
 import { useConsulta } from '@/hooks/useConsulta';
+import { ApiError } from '@/services/api';
+import { detallesDePedidos } from '@/services/pedidos';
 import { obtenerDetalleReembolso, listarReembolsos, procesarReembolso } from '@/services/reembolsos';
 import type { DetalleReembolsoResponse, EstadoReembolso, OrigenReembolso, ReembolsoResumen } from '@/types/reembolso';
 import backIcon from '@/assets/reembolsos/back.svg';
@@ -34,13 +37,18 @@ export function ReembolsosPage() {
   const [procesando, setProcesando] = useState(false);
   const [resultadoActual, setResultadoActual] = useState<DetalleReembolsoResponse | null>(null);
 
-  const cargarListado = useCallback(() => listarReembolsos({
+  const cargarListado = useCallback(async () => {
+    const respuesta = await listarReembolsos({
     buscar: aplicados.busqueda || undefined,
     estado: aplicados.estado === 'TODOS' ? undefined : aplicados.estado as EstadoReembolso,
     origen: aplicados.origen === 'TODOS' ? undefined : aplicados.origen as OrigenReembolso,
     desde: aplicados.fecha ?? undefined, hasta: aplicados.fecha ?? undefined, orden,
     pagina: pagina - 1, tamano: RESULTADOS_POR_PAGINA,
-  }), [aplicados, orden, pagina]);
+  });
+    // 2.6b no trae el cliente: se completa con el detalle de cada pedido (1.5)
+    const pedidos = await detallesDePedidos(respuesta.contenido.map((r) => r.pedidoId));
+    return { ...respuesta, contenido: respuesta.contenido.map((r) => ({ ...r, clienteNombre: pedidos.get(r.pedidoId)?.contacto?.nombreCompleto ?? null })) };
+  }, [aplicados, orden, pagina]);
   const listado = useConsulta(cargarListado, [cargarListado]);
   const cargarDetalle = useCallback(() => seleccionado ? obtenerDetalleReembolso(seleccionado) : Promise.resolve(null), [seleccionado]);
   const detalle = useConsulta(cargarDetalle, [cargarDetalle]);
@@ -55,6 +63,8 @@ export function ReembolsosPage() {
       await procesarReembolso({ origen: reembolso.origen, origenId: reembolso.origenId, referenciaId: reembolso.pedidoId, monto: reembolso.monto, moneda: reembolso.moneda }, reembolso.claveIdempotencia);
       setResultadoActual(await obtenerDetalleReembolso(reembolso.reembolsoId));
       listado.recargar(); detalle.recargar(); setModal('resultado');
+    } catch (e) {
+      notifications.show({ color: 'red', title: 'No se pudo procesar el reembolso', message: e instanceof ApiError ? e.message : 'Inténtalo de nuevo en unos segundos.' });
     } finally { setProcesando(false); }
   };
 
@@ -69,7 +79,7 @@ export function ReembolsosPage() {
     </section>
     <section className={seleccionado ? 'reembolsos-card reembolsos-card--selected' : 'reembolsos-card'} aria-label="Listado de reembolsos">
       <div className="reembolsos-card-heading"><div><Title order={2}>Reembolsos</Title><Text>Operaciones registradas</Text></div><Select value={orden} onChange={(valor) => { setOrden(valor === 'ANTIGUOS' ? 'ANTIGUOS' : 'RECIENTES'); setPagina(1); }} data={[{ value: 'RECIENTES', label: 'Más recientes' }, { value: 'ANTIGUOS', label: 'Más antiguos' }]} rightSection={<img src={chevronIcon} alt="" className="reembolsos-input-icon" />} rightSectionPointerEvents="none" allowDeselect={false} /></div>
-      <EstadoCarga {...listado} mensajeVacio="No hay reembolsos que coincidan con los filtros." onReintentar={listado.recargar}>{(respuesta) => <Table className="reembolsos-table" horizontalSpacing={8} verticalSpacing={0}><Table.Thead><Table.Tr><Table.Th>Código / fecha</Table.Th><Table.Th>Pedido</Table.Th><Table.Th>Cliente</Table.Th><Table.Th>Origen</Table.Th><Table.Th>Monto</Table.Th><Table.Th>Estado</Table.Th><Table.Th>Acción</Table.Th></Table.Tr></Table.Thead><Table.Tbody>{respuesta.contenido.map((r: ReembolsoResumen) => <Table.Tr key={r.reembolsoId}><Table.Td><strong>{r.reembolsoId}</strong><small>{fecha(r.fecha)}</small></Table.Td><Table.Td>{r.pedidoId}</Table.Td><Table.Td>—</Table.Td><Table.Td><span className={`reembolsos-origin reembolsos-origin--${r.origen.toLowerCase()}`}>{etiquetaOrigen[r.origen]}</span></Table.Td><Table.Td>{monto(r.monto, r.moneda)}</Table.Td><Table.Td><EstadoBadge entidad="reembolso" estado={r.estado} size="sm" /></Table.Td><Table.Td><Button variant="default" size="xs" onClick={() => { setSeleccionado(r.reembolsoId); setResultadoActual(null); setModal(null); }}>Ver</Button></Table.Td></Table.Tr>)}</Table.Tbody></Table>}</EstadoCarga>
+      <EstadoCarga {...listado} mensajeVacio="No hay reembolsos que coincidan con los filtros." onReintentar={listado.recargar}>{(respuesta) => <Table className="reembolsos-table" horizontalSpacing={8} verticalSpacing={0}><Table.Thead><Table.Tr><Table.Th>Código / fecha</Table.Th><Table.Th>Pedido</Table.Th><Table.Th>Cliente</Table.Th><Table.Th>Origen</Table.Th><Table.Th>Monto</Table.Th><Table.Th>Estado</Table.Th><Table.Th>Acción</Table.Th></Table.Tr></Table.Thead><Table.Tbody>{respuesta.contenido.map((r: ReembolsoResumen) => <Table.Tr key={r.reembolsoId}><Table.Td><strong>{r.reembolsoId}</strong><small>{fecha(r.fecha)}</small></Table.Td><Table.Td>{r.pedidoId}</Table.Td><Table.Td>{r.clienteNombre ?? '—'}</Table.Td><Table.Td><span className={`reembolsos-origin reembolsos-origin--${r.origen.toLowerCase()}`}>{etiquetaOrigen[r.origen]}</span></Table.Td><Table.Td>{monto(r.monto, r.moneda)}</Table.Td><Table.Td><EstadoBadge entidad="reembolso" estado={r.estado} size="sm" /></Table.Td><Table.Td><Button variant="default" size="xs" onClick={() => { setSeleccionado(r.reembolsoId); setResultadoActual(null); setModal(null); }}>Ver</Button></Table.Td></Table.Tr>)}</Table.Tbody></Table>}</EstadoCarga>
       {listado.datos && <div className="reembolsos-pagination"><Text>Mostrando {listado.datos.contenido.length} de {compacto(listado.datos.totalElementos)} {listado.datos.totalElementos === 1 ? 'resultado' : 'resultados'}</Text><Pagination value={pagina} onChange={setPagina} total={Math.max(1, listado.datos.totalPaginas)} size="sm" siblings={0} boundaries={1} /></div>}
     </section>
     {seleccionado && <EstadoCarga {...detalle} onReintentar={detalle.recargar}>{(r) => <DetalleReembolso reembolso={r} autorizadoVisualmente={autorizados.includes(r.reembolsoId)} onClose={() => { setSeleccionado(null); setResultadoActual(null); setModal(null); }} onOpenModal={setModal} />}</EstadoCarga>}
