@@ -1,0 +1,32 @@
+.contenido { min-height: 558px; }
+.resumen { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 18px; margin-top: 16px; }
+.promedio { height: 148px; padding: 14px 18px; border-radius: 14px; background: #fff0e4; }
+.etiqueta { margin: 0; color: var(--mantine-color-orange-7); font-size: 8.5px; font-weight: 700; line-height: 18px; text-transform: uppercase; }
+.valor { margin: 4px 0 7px; font-size: 30px; font-weight: 700; line-height: 42px; }
+.avance { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; color: var(--mantine-color-ink-4); font-size: 8.4px; line-height: 16px; }
+.avance strong { color: var(--mantine-color-orange-7); font-size: 11px; }
+.progresoPromedio { background: white; }
+.distribucion { height: 148px; padding: 9px 15px; border: 1px solid var(--mantine-color-cloud-6); border-radius: 12px; }
+.subtitulo { margin: 0 0 7px; font-size: 10.2px; font-weight: 600; line-height: 20px; }
+.fila { display: grid; grid-template-columns: 42px minmax(0, 1fr) 52px; align-items: center; gap: 8px; min-height: 21px; font-size: 8.8px; font-weight: 500; }
+.barra { background: var(--mantine-color-cloud-3); }
+.porcentaje { text-align: right; color: var(--mantine-color-ink-4); font-weight: 600; }
+.informacion { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 20px; }
+.tarjeta { min-height: 196px; padding: 10px 15px; border: 1px solid var(--mantine-color-cloud-6); border-radius: 12px; }
+.tituloTarjeta { margin: 0 0 12px; font-size: 14px; line-height: 24px; }
+.trazabilidad { margin: 0; }
+.trazabilidad > div { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 8px; align-items: center; min-height: 34px; }
+.trazabilidad dt { font-size: 8.8px; font-weight: 600; }
+.trazabilidad dd { margin: 0; color: var(--mantine-color-ink-4); font-size: 8.4px; line-height: 14px; }
+.reglas { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.reglas li { display: flex; align-items: center; gap: 10px; min-height: 24px; }
+.reglas li > span { display: grid; flex: 0 0 24px; height: 24px; place-items: center; border-radius: 50%; background: #fff0e4; color: var(--mantine-color-orange-7); font-size: 8.5px; font-weight: 700; }
+.reglas p { margin: 0; font-size: 8.6px; line-height: 15px; }
+.vacio { color: var(--mantine-color-ink-4); font-size: 11px; }
+
+@media (max-width: 600px) {
+  .contenido { min-height: 0; }
+  .resumen, .informacion { grid-template-columns: 1fr; gap: 16px; }
+  .promedio { width: 100%; }
+  .tarjeta { min-height: 196px; }
+}
