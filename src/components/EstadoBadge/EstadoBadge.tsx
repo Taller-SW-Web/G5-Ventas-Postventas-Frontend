@@ -21,12 +21,13 @@ const COLORES = {
     EJECUTADA: 'green',
     RECHAZADA: 'red',
   },
+  // Colores del Mockup 06 (Figma): amarillo, signal, volt, rojo y gris.
   devolucion: {
-    SOLICITADA: 'gray',
-    EN_EVALUACION: 'yellow',
-    APROBADA: 'blue',
+    SOLICITADA: 'yellow',
+    EN_EVALUACION: 'signal',
+    APROBADA: 'volt',
     RECHAZADA: 'red',
-    COMPLETADA: 'green',
+    COMPLETADA: 'gray',
   },
   reclamo: {
     REGISTRADO: 'gray',
