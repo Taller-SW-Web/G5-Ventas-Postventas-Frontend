@@ -1,6 +1,11 @@
-// F4 — api-postventas.md 2.6 (Luis Alejandro)
+// F4 — api-postventas.md 2.6 y 2.6b (Luis Alejandro)
 import { apiPostventa } from './api';
-import type { ReembolsoResponse, SolicitudReembolsoRequest } from '@/types/reembolso';
+import type {
+  FiltrosReembolsos,
+  ListadoReembolsos,
+  ReembolsoResponse,
+  SolicitudReembolsoRequest,
+} from '@/types/reembolso';
 
 /** Genera la clave UNA vez por intento de envío; reutilizarla en reintentos (RNF-08). */
 export function nuevaClaveIdempotencia(): string {
@@ -15,5 +20,11 @@ export async function procesarReembolso(
   const { data } = await apiPostventa.post<ReembolsoResponse>('/api/v2/reembolsos', body, {
     headers: { 'X-Idempotency-Key': claveIdempotencia },
   });
+  return data;
+}
+
+/** 2.6b GET /api/v2/reembolsos (rol ADMIN_VENTAS): bandeja del Gestor. */
+export async function listarReembolsos(filtros: FiltrosReembolsos = {}): Promise<ListadoReembolsos> {
+  const { data } = await apiPostventa.get<ListadoReembolsos>('/api/v2/reembolsos', { params: filtros });
   return data;
 }
