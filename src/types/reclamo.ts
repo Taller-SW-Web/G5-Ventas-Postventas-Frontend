@@ -12,6 +12,12 @@ export type MotivoReclamo =
 
 export type EstadoReclamo = 'REGISTRADO' | 'EN_PROCESO' | 'ATENDIDO' | 'DERIVADO';
 
+/**
+ * Semáforo del plazo (propuesta UX 01), distinto del estado de atención: un reclamo puede estar
+ * EN_PROCESO y VENCIDO a la vez. Lo calcula el backend en días hábiles.
+ */
+export type EstadoSla = 'EN_PLAZO' | 'POR_VENCER' | 'CRITICO' | 'VENCIDO' | 'ATENDIDO';
+
 export const PLAZO_RECLAMO_DIAS_HABILES = 15;
 
 export interface Consumidor {
@@ -57,6 +63,14 @@ export interface ReclamoDetalle {
   fechaRegistro: string;
   fechaAtencion: string | null;
   respuestaVisibleCliente: string | null;
+  // Campos que M2 agrega además del contrato (pendiente reflejarlos en api-postventas.md)
+  consumidor?: Consumidor;
+  atendidoPor?: string | null;
+  estadoSla?: EstadoSla;
+  /** 0 = vence hoy; negativo = vencido. null cuando ya está ATENDIDO. */
+  diasHabilesRestantes?: number | null;
+  /** null mientras no haya respuesta formal. */
+  slaCumplido?: boolean | null;
 }
 
 /** Fila de 2.10 GET /api/v2/reclamos */
@@ -68,6 +82,12 @@ export interface ReclamoResumen {
   estado: EstadoReclamo;
   fechaRegistro: string;
   fechaLimiteSLA: string;
+  // Campos que M2 agrega además del contrato (la bandeja del mockup 07 los muestra)
+  pedidoId?: string | null;
+  canal?: Canal;
+  nombreConsumidor?: string;
+  estadoSla?: EstadoSla;
+  diasHabilesRestantes?: number | null;
 }
 
 export type ListadoReclamos = Paginado<ReclamoResumen>;
@@ -76,20 +96,33 @@ export interface FiltrosReclamos extends ParametrosPaginacion {
   documento?: string;
   clienteId?: string;
   estado?: EstadoReclamo;
+  // Filtros que M2 agrega además del contrato (bandeja del mockup 07, propuesta UX 01)
+  /** Código de reclamo, código de pedido, documento o parte del nombre del consumidor. */
+  buscar?: string;
+  /** POR_VENCER incluye a CRITICO (0 a 5 días hábiles). */
+  sla?: EstadoSla;
+  /** YYYY-MM-DD, día de registro (inclusive). */
+  desde?: string;
+  hasta?: string;
+  orden?: 'RECIENTES' | 'ANTIGUOS';
 }
 
-/** 2.11 PATCH /api/v2/reclamos/{reclamoId}/respuesta */
+/**
+ * 2.11 PATCH /api/v2/reclamos/{reclamoId}/respuesta.
+ * EN_PROCESO ("Iniciar atención") va sin respuesta; ATENDIDO y DERIVADO la exigen.
+ */
 export interface ResponderReclamoRequest {
-  nuevoEstado: EstadoReclamo;
-  respuestaVisibleCliente: string;
+  nuevoEstado: Exclude<EstadoReclamo, 'REGISTRADO'>;
+  respuestaVisibleCliente?: string;
   atendidoPor: string;
 }
 
 export interface ResponderReclamoResponse {
   reclamoId: string;
   estado: EstadoReclamo;
-  fechaRespuesta: string;
-  respuestaVisibleCliente: string;
+  /** null al pasar a EN_PROCESO. */
+  fechaRespuesta: string | null;
+  respuestaVisibleCliente: string | null;
 }
 
 // ---------- 2.12 Dashboard ----------
@@ -113,7 +146,10 @@ export interface MetricasDashboard {
   postventa: {
     devolucionesAprobadas: number;
     montoReembolsadoPEN: number;
-    csatPromedio: number;
+    /** null si el periodo no tiene encuestas. */
+    csatPromedio: number | null;
     reclamosPendientesSLA: number;
   };
+  /** Hasta cuándo están consolidados los agregados (M2 lo agrega además del contrato). */
+  ultimaActualizacion?: string | null;
 }
