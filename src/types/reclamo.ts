@@ -125,6 +125,16 @@ export interface ResponderReclamoResponse {
   respuestaVisibleCliente: string | null;
 }
 
+// ---------- Atención prioritaria (Mockup 01, 7.2 a 7.4) ----------
+// No es un recurso del contrato: es la bandeja que arma el portal con 2.10 (reclamos) y 2.4 (devoluciones).
+
+export type TipoCaso = 'RECLAMO' | 'DEVOLUCION' | 'CAMBIO';
+
+/** Situación que muestra la bandeja (Figma): urgencia del reclamo o etapa del expediente de postventa. */
+export type SituacionCaso = 'VENCIDO' | 'POR_VENCER' | 'PENDIENTE_EVALUACION' | 'EN_EVALUACION';
+
+export type PrioridadCaso = 'ALTA' | 'MEDIA';
+
 // ---------- 2.12 Dashboard ----------
 
 export interface FiltrosMetricas {
