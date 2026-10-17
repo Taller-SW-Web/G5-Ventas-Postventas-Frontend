@@ -32,14 +32,14 @@ import {
 } from '@/services/anulaciones';
 import { ApiError } from '@/services/api';
 import { CASOS_MOCKUP_04, type ItemBandejaAnulacion } from './datosMockup04';
-import type { ListadoAnulacionesPendientes } from '@/types/pedido';
+import type { ListadoAnulacionesPendientes, MotivoAnulacion } from '@/types/pedido';
 
-const MOTIVOS_ANULACION_GESTOR = [
+const OPCIONES_MOTIVO_GESTOR: { value: MotivoAnulacion; label: string }[] = [
   { value: 'SOLICITUD_CLIENTE', label: 'Solicitud del cliente (arrepentimiento / cambio de opinión)' },
-  { value: 'ERROR_DIRECCION', label: 'Error en la dirección de entrega' },
-  { value: 'PRODUCTO_EQUIVOCADO', label: 'Producto equivocado o error en la compra' },
-  { value: 'PAGO_NO_COMPLETADO', label: 'Pago no completado o timeout' },
-  { value: 'ENTREGA_FALLIDA_DEFINITIVA', label: 'Entrega fallida definitiva en ruta' },
+  { value: 'ARREPENTIMIENTO_COMPRA', label: 'Arrepentimiento de compra' },
+  { value: 'ERROR_SELECCION_PRODUCTO', label: 'Error de selección de producto' },
+  { value: 'ERROR_DATOS_ENVIO', label: 'Error en datos de envío' },
+  { value: 'DUPLICADO', label: 'Pedido duplicado' },
 ];
 
 function parsearFecha(f?: string): number {
@@ -73,7 +73,7 @@ export function AnulacionesPage() {
   // Modal Iniciar Anulación (Endpoint 1.7)
   const [modalSolicitarAbierto, setModalSolicitarAbierto] = useState(false);
   const [pedidoIdSolicitud, setPedidoIdSolicitud] = useState(pedidoIdParam || '');
-  const [motivoSolicitud, setMotivoSolicitud] = useState<string | null>('SOLICITUD_CLIENTE');
+  const [motivoSolicitud, setMotivoSolicitud] = useState<MotivoAnulacion>('SOLICITUD_CLIENTE');
   const [comentarioSolicitud, setComentarioSolicitud] = useState('');
   const [solicitandoAnulacion, setSolicitandoAnulacion] = useState(false);
 
@@ -398,7 +398,7 @@ export function AnulacionesPage() {
       </Group>
 
       {/* Alerta de conexión */}
-      {error && (
+      {Boolean(error) && (
         <Alert color="orange" title="Modo Demostración / Backend no conectado">
           No se detectó el backend activo en el puerto configurado. La vista está operando con datos locales del Mockup 04.
         </Alert>
@@ -406,7 +406,7 @@ export function AnulacionesPage() {
 
       {/* Barra de Filtros */}
       <Paper p="md" radius="md" withBorder>
-        <Grid gutter="md" align="flex-end">
+        <Grid gap="md" align="flex-end">
           <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
             <TextInput
               label="Buscar"
@@ -472,7 +472,7 @@ export function AnulacionesPage() {
       </Paper>
 
       {/* Contenido Principal: Bandeja + Panel Lateral */}
-      <Grid gutter="md">
+      <Grid gap="md">
         {/* Bandeja de Solicitudes (Tabla) */}
         <Grid.Col span={casoSeleccionado ? { base: 12, lg: 7 } : 12}>
           <Paper p="md" radius="md" withBorder>
@@ -838,9 +838,11 @@ export function AnulacionesPage() {
 
           <Select
             label="Motivo de anulación (Catálogo cerrado)"
-            data={MOTIVOS_ANULACION_GESTOR}
+            data={OPCIONES_MOTIVO_GESTOR}
             value={motivoSolicitud}
-            onChange={setMotivoSolicitud}
+            onChange={(val) => {
+              if (val) setMotivoSolicitud(val as MotivoAnulacion);
+            }}
             required
           />
 
