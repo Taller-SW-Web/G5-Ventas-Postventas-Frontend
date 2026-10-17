@@ -1,0 +1,23 @@
+/* Al imprimir el formato del reclamo solo sale el formato, no el portal que queda detrás del modal. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .formato-reclamo-imprimible,
+  .formato-reclamo-imprimible * {
+    visibility: visible;
+  }
+
+  .formato-reclamo-imprimible {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    padding: 24px;
+  }
+
+  /* Los botones Imprimir / Cerrar no forman parte del documento */
+  .formato-reclamo-imprimible button {
+    display: none;
+  }
+}

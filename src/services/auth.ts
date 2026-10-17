@@ -42,9 +42,16 @@ function leerClaims(token: string): ClaimsJwt | null {
   }
 }
 
-/** Solo en `npm run dev` y con VITE_AUTH_DESACTIVADA=true. Nunca aplica en producción. */
+/**
+ * Entra sin token como Gestor:
+ * - en `npm run dev` con VITE_AUTH_DESACTIVADA=true (desarrollo local);
+ * - en cualquier build con VITE_MODO_DEMO=true. Solo para la demo con el backend en SEGURIDAD_HABILITADA=false;
+ *   sin eso el backend rechaza las llamadas igual (la seguridad real está en el backend).
+ */
+export const modoDemo = import.meta.env.VITE_MODO_DEMO === 'true';
+
 export const authDesactivada =
-  import.meta.env.DEV && import.meta.env.VITE_AUTH_DESACTIVADA === 'true';
+  modoDemo || (import.meta.env.DEV && import.meta.env.VITE_AUTH_DESACTIVADA === 'true');
 
 export function sesionActual(): { autenticado: boolean; roles: string[]; usuarioId: string | null } {
   if (authDesactivada) {

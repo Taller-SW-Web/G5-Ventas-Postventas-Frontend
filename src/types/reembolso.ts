@@ -1,16 +1,12 @@
 // Contrato M2 — api-postventas.md 2.6 (F4)
-import type { Moneda } from './comun';
+import type { Moneda, Paginado, ParametrosPaginacion } from './comun';
 
 export type EstadoReembolso = 'PENDIENTE' | 'EXITOSO' | 'FALLIDO';
-
 export type OrigenReembolso = 'ANULACION' | 'DEVOLUCION';
 
-/** 2.6 POST /api/v2/reembolsos (requiere cabecera X-Idempotency-Key). */
 export interface SolicitudReembolsoRequest {
   origen: OrigenReembolso;
-  /** ANUL-NNNN o DEV-AAAA-NNNN */
   origenId: string;
-  /** pedidoId */
   referenciaId: string;
   monto: number;
   moneda: Moneda;
@@ -20,18 +16,11 @@ export interface SolicitudReembolsoRequest {
 
 export interface ReembolsoResponse {
   reembolsoId: string;
-  transaccionPasarelaId: string;
+  transaccionPasarelaId: string | null;
   estado: EstadoReembolso;
   monto: number;
   moneda: Moneda;
   fechaEjecucion: string;
-}
-
-export interface ListadoReembolsosResponse {
-  contenido: ReembolsoResumen[];
-  pagina: number;
-  totalPaginas: number;
-  totalElementos: number;
 }
 
 export interface ReembolsoResumen {
@@ -49,6 +38,19 @@ export interface ReembolsoResumen {
   fechaUltimoIntento: string | null;
 }
 
+export type ListadoReembolsos = Paginado<ReembolsoResumen>;
+
+export interface FiltrosReembolsos extends ParametrosPaginacion {
+  estado?: EstadoReembolso;
+  origen?: OrigenReembolso;
+  pedidoId?: string;
+  buscar?: string;
+  /** YYYY-MM-DD, inclusivos. */
+  desde?: string;
+  hasta?: string;
+  orden?: 'RECIENTES' | 'ANTIGUOS';
+}
+
 export interface IntentoReembolso {
   numero: number;
   estado: EstadoReembolso;
@@ -57,6 +59,7 @@ export interface IntentoReembolso {
   fecha: string;
 }
 
+/** 2.6c: datos del panel “Ver”. */
 export interface DetalleReembolsoResponse {
   reembolsoId: string;
   pedidoId: string;
@@ -75,15 +78,4 @@ export interface DetalleReembolsoResponse {
   total: boolean;
   claveIdempotencia: string;
   intentos: IntentoReembolso[];
-}
-
-export interface FiltrosReembolsos {
-  estado?: EstadoReembolso;
-  origen?: OrigenReembolso;
-  buscar?: string;
-  desde?: string;
-  hasta?: string;
-  orden?: 'RECIENTES' | 'ANTIGUOS';
-  pagina: number;
-  tamano: number;
 }
