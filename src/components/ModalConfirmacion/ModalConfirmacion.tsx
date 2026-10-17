@@ -21,6 +21,8 @@ export interface ModalConfirmacionProps {
   onCerrar: () => void;
   /** Campos adicionales: comentario, fundamento, etc. */
   children?: ReactNode;
+  /** Ícono opcional junto al título (los modales del Figma lo llevan en un recuadro de color). */
+  icono?: ReactNode;
 }
 
 export function ModalConfirmacion({
@@ -35,12 +37,27 @@ export function ModalConfirmacion({
   onConfirmar,
   onCerrar,
   children,
+  icono,
 }: ModalConfirmacionProps) {
+  const textoTitulo = (
+    <Text fw={700} size="lg">
+      {titulo}
+    </Text>
+  );
   return (
     <Modal
       opened={abierto}
       onClose={procesando ? () => undefined : onCerrar}
-      title={<Text fw={700} size="lg">{titulo}</Text>}
+      title={
+        icono ? (
+          <Group gap="md" wrap="nowrap">
+            {icono}
+            {textoTitulo}
+          </Group>
+        ) : (
+          textoTitulo
+        )
+      }
       closeOnClickOutside={!procesando}
       closeOnEscape={!procesando}
     >

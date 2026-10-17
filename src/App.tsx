@@ -5,6 +5,7 @@ import { LayoutGestor } from '@/components/LayoutGestor';
 import { RutaProtegida } from '@/components/RutaProtegida';
 import { AccesoDenegadoPage } from '@/pages/AccesoDenegado';
 import { AnulacionesPage } from '@/pages/Anulaciones';
+import { AtencionPrioritariaPage } from '@/pages/AtencionPrioritaria';
 import { CalificacionesReportesPage } from '@/pages/CalificacionesReportes';
 import { DashboardPage } from '@/pages/Dashboard';
 import { DetallePedidoPage } from '@/pages/DetallePedido';
@@ -34,6 +35,7 @@ export default function App() {
             <Route path="anulaciones" element={<AnulacionesPage />} />
 
             <Route path="postventa" element={<HubPostventaPage />} />
+            <Route path="postventa/prioritarios" element={<AtencionPrioritariaPage />} />
             <Route path="postventa/devoluciones" element={<DevolucionesPage />} />
             <Route path="postventa/reclamos" element={<ReclamosPage />} />
             <Route path="postventa/reembolsos" element={<ReembolsosPage />} />

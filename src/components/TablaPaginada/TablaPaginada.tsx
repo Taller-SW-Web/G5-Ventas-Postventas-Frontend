@@ -18,6 +18,8 @@ export interface TablaPaginadaProps<T> {
   totalElementos?: number;
   onCambiarPagina: (pagina: number) => void;
   onClickFila?: (fila: T) => void;
+  /** Texto del pie en lugar de "N resultado(s)", ej. "Mostrando 1 a 5 de 14 reclamos". */
+  resumen?: ReactNode;
 }
 
 export function TablaPaginada<T>({
@@ -29,6 +31,7 @@ export function TablaPaginada<T>({
   totalElementos,
   onCambiarPagina,
   onClickFila,
+  resumen,
 }: TablaPaginadaProps<T>) {
   return (
     <>
@@ -59,7 +62,7 @@ export function TablaPaginada<T>({
 
       <Group justify="space-between" mt="md">
         <Text size="sm" c="dimmed">
-          {totalElementos !== undefined ? `${totalElementos} resultado(s)` : ''}
+          {resumen ?? (totalElementos !== undefined ? `${totalElementos} resultado(s)` : '')}
         </Text>
         {totalPaginas > 1 && (
           <Pagination
