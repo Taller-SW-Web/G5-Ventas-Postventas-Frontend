@@ -16,6 +16,7 @@ import {
   Textarea,
   Timeline,
   Title,
+  UnstyledButton,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { EstadoBadge } from '@/components/EstadoBadge';
@@ -175,6 +176,27 @@ function Contenido({ reclamo, onActualizado }: { reclamo: ReclamoDetalle; onActu
           El plazo legal venció: el reclamo sigue pendiente de respuesta formal.
         </Alert>
       )}
+
+      {/* Archivos (Mockup 07, 8.2): la tarjeta abre la misma vista previa que "Generar PDF". */}
+      <Divider label="Archivos" labelPosition="left" />
+      <UnstyledButton onClick={() => setModal('formato')} aria-label="Abrir formato del reclamo">
+        <Paper withBorder radius="md" p="sm">
+          <Group gap="sm" wrap="nowrap">
+            <Text fz={24} aria-hidden>
+              📄
+            </Text>
+            <Stack gap={0}>
+              <Text size="sm" fw={600}>
+                Formato / respuesta del reclamo
+              </Text>
+              <Text size="xs" c="dimmed">
+                {reclamo.codigoSeguimiento} ·{' '}
+                {reclamo.respuestaVisibleCliente ? 'con respuesta formal' : 'pendiente de respuesta formal'}
+              </Text>
+            </Stack>
+          </Group>
+        </Paper>
+      </UnstyledButton>
 
       <Divider label="Acciones" labelPosition="left" />
       <Group gap="sm">
