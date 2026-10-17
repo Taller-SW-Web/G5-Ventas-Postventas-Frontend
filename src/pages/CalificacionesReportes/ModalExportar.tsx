@@ -1,11 +1,11 @@
 // Modal_Exportar_reporte + Overlay_Exportacion_completada (Mockup 09, 5.5).
-// Es una simulación: no genera archivo ni elige formato (ESP-16 todavía no está en el contrato). Cerrar → sale sin
-// continuar; Preparar → "Exportación preparada"; Finalizar → vuelve a la consulta.
+// Descarga un CSV con los indicadores de la consulta aplicada (ESP-16, sección 8), generado en el navegador: no
+// vuelve a llamar al backend ni recalcula nada. Cerrar → sale sin descargar; Descargar → "Exportación completada".
 import { useState } from 'react';
 import { Badge, Box, Button, Center, Group, Modal, Paper, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { FiltrosAplicados } from './FiltrosAplicados';
-import { indicadores, textoRango, type ContextoReporte, type Indicador } from './reportes';
+import { csvReporte, indicadores, nombreArchivoReporte, textoRango, type ContextoReporte, type Indicador } from './reportes';
 
 interface Props {
   abierto: boolean;
@@ -41,11 +41,20 @@ function Grupo({ titulo, subtitulo, filas }: { titulo: string; subtitulo: string
 export function ModalExportar({ abierto, contexto, onCerrar }: Props) {
   const [preparado, setPreparado] = useState(false);
 
-  function preparar() {
+  function descargar() {
+    if (!contexto) return;
+    const url = URL.createObjectURL(new Blob([csvReporte(contexto)], { type: 'text/csv;charset=utf-8' }));
+    const enlace = document.createElement('a');
+    enlace.href = url;
+    enlace.download = nombreArchivoReporte(contexto);
+    document.body.appendChild(enlace);
+    enlace.click();
+    enlace.remove();
+    URL.revokeObjectURL(url);
     setPreparado(true);
     notifications.show({
-      title: 'Reporte preparado',
-      message: 'Se conservan exactamente los filtros y métricas visibles.',
+      title: 'Reporte descargado',
+      message: 'El CSV conserva exactamente los filtros y métricas visibles.',
       color: 'dark',
     });
   }
@@ -102,13 +111,13 @@ export function ModalExportar({ abierto, contexto, onCerrar }: Props) {
             </Box>
             <Group justify="space-between" wrap="wrap">
               <Text size="xs" c="dimmed">
-                El formato de descarga se definirá cuando esté formalizado en el contrato
+                Formato: CSV (se abre en Excel)
               </Text>
               <Group gap="sm">
                 <Button variant="default" onClick={onCerrar}>
                   Cerrar
                 </Button>
-                <Button onClick={preparar}>Preparar</Button>
+                <Button onClick={descargar}>Descargar CSV</Button>
               </Group>
             </Group>
           </Stack>
@@ -122,9 +131,9 @@ export function ModalExportar({ abierto, contexto, onCerrar }: Props) {
               ✓
             </Text>
           </Center>
-          <Title order={3}>Exportación preparada</Title>
+          <Title order={3}>Exportación completada</Title>
           <Text size="sm" c="dimmed" ta="center">
-            El reporte quedó listo con los filtros y métricas que revisaste
+            Se descargó el CSV con los filtros y métricas que revisaste
           </Text>
           <Box bg="cloud.2" p="sm" w="100%" style={{ borderRadius: 'var(--mantine-radius-md)' }}>
             <Text size="xs" c="volt.9" ta="center" fw={600}>
