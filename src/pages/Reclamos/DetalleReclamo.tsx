@@ -165,7 +165,7 @@ function Contenido({ reclamo, onActualizado }: { reclamo: ReclamoDetalle; onActu
         </Timeline.Item>
         <Timeline.Item title="Reclamo atendido">
           <Text size="xs" c="dimmed">
-            {reclamo.estado === 'ATENDIDO' ? `${fechaHora(reclamo.fechaAtencion)} (UTC registrado)` : '—'}
+            {reclamo.estado === 'ATENDIDO' ? fechaHora(reclamo.fechaAtencion) : '—'}
           </Text>
         </Timeline.Item>
       </Timeline>

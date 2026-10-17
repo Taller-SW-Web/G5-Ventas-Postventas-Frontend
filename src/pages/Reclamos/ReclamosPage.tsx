@@ -13,7 +13,7 @@ import { usePaginacion } from '@/hooks/usePaginacion';
 import { listarReclamos } from '@/services/reclamos';
 import type { EstadoReclamo, EstadoSla, FiltrosReclamos, ReclamoResumen } from '@/types/reclamo';
 import { DetalleReclamo } from './DetalleReclamo';
-import { ETIQUETA_MOTIVO, fechaHora, textoSlaCorto } from './formato';
+import { ETIQUETA_MOTIVO, dia, textoSlaCorto } from './formato';
 
 const TAMANO_PAGINA = 5;
 const TODOS = 'TODOS';
@@ -21,7 +21,7 @@ const TODOS = 'TODOS';
 const OPCIONES_ESTADO = [
   { value: TODOS, label: 'Todos' },
   { value: 'REGISTRADO', label: 'REGISTRADO' },
-  { value: 'EN_PROCESO', label: 'EN_PROCESO' },
+  { value: 'EN_PROCESO', label: 'EN PROCESO' },
   { value: 'ATENDIDO', label: 'ATENDIDO' },
 ];
 
@@ -81,7 +81,7 @@ const COLUMNAS: ColumnaTabla<ReclamoResumen>[] = [
           {r.codigoSeguimiento}
         </Text>
         <Text size="xs" c="dimmed">
-          {fechaHora(r.fechaRegistro)}
+          {dia(r.fechaRegistro)}
         </Text>
       </Stack>
     ),

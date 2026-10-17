@@ -28,6 +28,11 @@ export function fechaHora(iso: string | null | undefined): string {
   return iso ? dayjs(iso).format('DD/MM/YYYY HH:mm') : '—';
 }
 
+/** Día local de un instante, ej. 21/09/2026 (fecha de registro en la bandeja, como en el Figma). */
+export function dia(iso: string | null | undefined): string {
+  return iso ? dayjs(iso).format('DD/MM/YYYY') : '—';
+}
+
 /** Solo el día. Para fechaLimiteSLA se toma el día UTC (23:59:59Z), que es el día límite real. */
 export function fecha(iso: string | null | undefined): string {
   return iso ? dayjs(iso.slice(0, 10)).format('DD/MM/YYYY') : '—';

@@ -1,6 +1,8 @@
 // Overlay_PDF_reclamo (Mockup 07, 8.2): vista previa del formato del reclamo.
-// Igual que el mockup, no descarga un archivo; "Imprimir" usa el diálogo del navegador (permite guardar como PDF).
+// Igual que el mockup, no descarga un archivo; "Imprimir" usa el diálogo del navegador (permite guardar como PDF)
+// y solo imprime el formato, no el resto del portal (ver FormatoReclamoModal.css).
 import { Button, Divider, Group, Modal, SimpleGrid, Stack, Text, Title } from '@mantine/core';
+import './FormatoReclamoModal.css';
 import type { ReclamoDetalle } from '@/types/reclamo';
 import { ETIQUETA_CANAL, ETIQUETA_MOTIVO, ETIQUETA_TIPO, fecha, fechaHora } from './formato';
 
@@ -28,7 +30,7 @@ export function FormatoReclamoModal({ reclamo, borrador, abierto, onCerrar }: Pr
 
   return (
     <Modal opened={abierto} onClose={onCerrar} size="lg" title={<Text fw={700}>Formato del reclamo</Text>}>
-      <Stack gap="md">
+      <Stack gap="md" className="formato-reclamo-imprimible">
         <div>
           <Title order={4}>Libro de Reclamaciones</Title>
           <Text size="sm" c="dimmed">
