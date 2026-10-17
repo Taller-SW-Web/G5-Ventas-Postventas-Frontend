@@ -27,6 +27,7 @@
 .reembolsos-history { width: calc(100% - 382px); min-height: 330px; margin: 16px 0 0; padding: 18px; border: 1px solid #ddd8ce; border-radius: 14px; background: #fff; box-shadow: 0 4px 4px rgba(27, 24, 18, .1); }
 .reembolsos-history h2, .reembolsos-detail-card h2 { margin: 0; font-size: 20px; line-height: 26px; text-transform: uppercase; }
 .reembolsos-detail { position: absolute; top: 198px; right: 0; width: 366px; display: grid; gap: 16px; }
+.reembolsos-detail-loader { position: absolute; top: 240px; right: 174px; }
 .reembolsos-detail-card { padding: 16px; border: 1px solid #ddd8ce; border-radius: 14px; background: #fff; box-shadow: 0 4px 4px rgba(27, 24, 18, .1); }
 .reembolsos-detail-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto 28px; gap: 8px; align-items: start; }
 .reembolsos-detail-heading h2 { max-width: 145px; }
