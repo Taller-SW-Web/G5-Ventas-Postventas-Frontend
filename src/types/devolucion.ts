@@ -1,5 +1,5 @@
-// Contrato M2 — api-postventas.md 2.1 a 2.5 (F3)
-import type { Canal, Moneda, Paginado, ParametrosPaginacion } from './comun';
+// Contrato M2 — api-postventas.md 2.1 a 2.5b (F3)
+import type { Moneda, Paginado, ParametrosPaginacion } from './comun';
 import type { EstadoReembolso } from './reembolso';
 
 export type TipoDevolucion = 'CAMBIO' | 'DEVOLUCION_DINERO';
@@ -73,38 +73,66 @@ export interface ReembolsoDeDevolucion {
   estado: EstadoReembolso;
   monto: number;
   moneda: Moneda;
-  transaccionPasarelaId: string;
-  fechaEjecucion: string;
+  transaccionPasarelaId: string | null;
+  fechaEjecucion: string | null;
 }
 
 export interface ResolucionDevolucion {
   decision: 'APROBADA' | 'RECHAZADA';
   tipoResolucion: TipoResolucion;
   fundamento: string | null;
-  autorizadorId: string;
+  autorizadorId: string | null;
   fechaResolucion: string;
+  /** reembolsoId de F4 o el pedido de reemplazo de M1 (CAMBIO). null en un rechazo. */
   referenciaOperacion: string | null;
-  reembolso?: ReembolsoDeDevolucion;
+  // M2 los agrega además del contrato (pendiente reflejarlos en api-postventas.md)
+  /** Si se espera la recepción física (2.5b) antes de completar. En CAMBIO siempre es true. */
+  requiereDevolucionFisica?: boolean;
+  reembolso?: ReembolsoDeDevolucion | null;
 }
 
-/** 2.3 GET /api/v2/devoluciones/{devolucionId} */
+export type ActorDevolucion = 'CLIENTE' | 'CANAL' | 'GESTOR' | 'SISTEMA';
+
+/** Un cambio de estado del expediente (RNF-03). estadoAnterior es null en el registro inicial. */
+export interface HistorialDevolucion {
+  estadoAnterior: EstadoDevolucion | null;
+  estado: EstadoDevolucion;
+  actor: ActorDevolucion;
+  idActor: string | null;
+  detalle: string | null;
+  fecha: string;
+}
+
+/** PENDIENTE mientras Productos (G6) no aplica el reintegro de esa línea. */
+export type EstadoReintegro = 'PENDIENTE' | 'COMPLETADO';
+
+/** Una línea recibida en almacén (2.5b). */
+export interface RecepcionDevolucion {
+  sku: string;
+  productoId: string;
+  cantidadRecibida: number;
+  cantidadApta: number;
+  reintegroEstado: EstadoReintegro;
+  idActor: string | null;
+  fecha: string;
+}
+
+/** 2.3 GET /api/v2/devoluciones/{devolucionId}. Si estaba SOLICITADA y la abre el Gestor, pasa a EN_EVALUACION. */
 export interface DevolucionDetalle {
   devolucionId: string;
   pedidoId: string;
-  clienteId: string;
+  clienteId: string | null;
   tipo: TipoDevolucion;
   estado: EstadoDevolucion;
   motivo: MotivoDevolucion;
-  descripcion: string;
+  descripcion: string | null;
   items: ItemDevolucion[];
   resolucion: ResolucionDevolucion | null;
-  evidencias?: Evidencia[];
+  evidencias?: Evidencia[] | null;
   fechaRegistro: string;
-  // Campos que pide el Mockup 06 y todavía no están en el contrato 2.3 (pendiente de agregar en api-postventas.md).
-  canal?: Canal;
-  nombreCliente?: string;
-  /** Fecha de entrega del pedido (desde M1): base del plazo de 7 días naturales. */
-  fechaEntrega?: string;
+  // M2 los agrega además del contrato (pendiente reflejarlos en api-postventas.md)
+  historial?: HistorialDevolucion[];
+  recepciones?: RecepcionDevolucion[];
 }
 
 /** Fila de 2.4 GET /api/v2/devoluciones */
@@ -114,32 +142,29 @@ export interface DevolucionResumen {
   tipo: TipoDevolucion;
   estado: EstadoDevolucion;
   motivo: MotivoDevolucion;
+  /** Solo viene cuando la resolución fue un reembolso. */
   estadoReembolso: EstadoReembolso | null;
   fechaRegistro: string;
-  // Pendientes de contrato 2.4 (bandeja del Mockup 06): canal y nombre del cliente.
-  canal?: Canal;
-  nombreCliente?: string;
 }
 
 export interface ListadoDevoluciones extends Paginado<DevolucionResumen> {
   /** Solo viene cuando se filtra por cliente. */
-  clienteId?: string;
+  clienteId?: string | null;
 }
 
 export type OrdenDevoluciones = 'RECIENTES' | 'ANTIGUOS';
 
 export interface FiltrosDevoluciones extends ParametrosPaginacion {
-  /**
-   * El contrato 2.4 lo exige, pero la bandeja del Mockup 06 lista todos los expedientes:
-   * se envía solo si se filtra por cliente (pendiente de ajustar el contrato).
-   */
+  /** El contrato 2.4 lo exige; la bandeja del Gestor lista todos sin él (pendiente en backend y contrato). */
   clienteId?: string;
   estado?: EstadoDevolucion;
   tipo?: TipoDevolucion;
-  // Filtros del Mockup 06 que aún no están en el contrato 2.4.
-  /** Código de expediente, pedido o nombre del cliente. */
+  // Filtros de la bandeja del Mockup 06, además del contrato (mismo patrón que 2.10 y 1.4)
+  /** Código DEV-AAAA-NNNN o PED-AAAA-NNNNN. */
   buscar?: string;
-  canal?: Canal;
+  /** YYYY-MM-DD, día de registro (inclusive). */
+  desde?: string;
+  hasta?: string;
   orden?: OrdenDevoluciones;
 }
 
@@ -150,6 +175,8 @@ export interface ResolverDevolucionRequest {
   fundamento?: string;
   /** Solo con APROBADA. Si no se envía, sale del tipo del expediente. */
   tipoResolucion?: Exclude<TipoResolucion, 'RECHAZO'>;
+  /** Solo con REEMBOLSO (por defecto true). En CAMBIO siempre es true. */
+  requiereDevolucionFisica?: boolean;
 }
 
 export interface ResolverDevolucionResponse {
@@ -158,7 +185,26 @@ export interface ResolverDevolucionResponse {
   decision: 'APROBADA' | 'RECHAZADA';
   tipoResolucion: TipoResolucion;
   fundamento: string | null;
-  autorizadorId: string;
+  autorizadorId: string | null;
   fechaResolucion: string;
   referenciaOperacion: string | null;
+}
+
+/** 2.5b PATCH /api/v2/devoluciones/{devolucionId}/recepcion */
+export interface ConfirmarRecepcionRequest {
+  /** sku de la línea del pedido original (items[].sku de 1.3), nunca el productoId. */
+  lineas: { sku: string; cantidadRecibida: number; cantidadApta: number }[];
+  /** URL de una foto de la recepción (opcional). */
+  evidencia?: string;
+}
+
+export interface ConfirmarRecepcionResponse {
+  devolucionId: string;
+  recepcionConfirmada: boolean;
+  fechaRecepcion: string;
+  actor: string | null;
+  lineas: { sku: string; cantidadApta: number }[];
+  reintegroSolicitado: boolean;
+  /** M2 lo agrega: COMPLETADA si con esta recepción ya no falta nada. */
+  estado?: EstadoDevolucion;
 }

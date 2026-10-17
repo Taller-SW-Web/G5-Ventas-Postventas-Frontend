@@ -1,7 +1,7 @@
 // Mockup 06 — Devoluciones y cambios (F3). Responsable: Joseph
 // Bandeja del Gestor (2.4) + revisión del expediente (2.3) + resolución (2.5).
 // Detalle de la pantalla: diseno/mockups/Mockup 06 - Devoluciones y Cambios.md
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ActionIcon,
@@ -21,7 +21,6 @@ import { EstadoCarga } from '@/components/EstadoCarga';
 import { TablaPaginada, type ColumnaTabla } from '@/components/TablaPaginada';
 import { useConsulta } from '@/hooks/useConsulta';
 import { usePaginacion } from '@/hooks/usePaginacion';
-import type { Canal } from '@/types/comun';
 import type {
   DevolucionResumen,
   EstadoDevolucion,
@@ -33,7 +32,8 @@ import { AccionesExpediente } from './AccionesExpediente';
 import { EvidenciaExpediente } from './EvidenciaExpediente';
 import { DetalleExpediente, EvaluacionExpediente } from './PanelesExpediente';
 import { ETIQUETA_MOTIVO, ETIQUETA_TIPO, dia } from './formato';
-import { fuenteDevoluciones } from './fuenteDevoluciones';
+import { listarDevoluciones } from '@/services/devoluciones';
+import { obtenerExpediente } from './expediente';
 
 const TAMANO_PAGINA = 5;
 const TODOS = 'TODOS';
@@ -53,13 +53,6 @@ const OPCIONES_TIPO = [
   { value: 'DEVOLUCION_DINERO', label: 'Devolución' },
 ];
 
-const OPCIONES_CANAL = [
-  { value: TODOS, label: 'Todos' },
-  { value: 'MARKETPLACE', label: 'Marketplace' },
-  { value: 'CHATBOT', label: 'Chatbot' },
-  { value: 'RETAIL', label: 'Retail' },
-];
-
 const OPCIONES_ORDEN = [
   { value: 'RECIENTES', label: 'Más recientes' },
   { value: 'ANTIGUOS', label: 'Más antiguos' },
@@ -69,17 +62,15 @@ interface Controles {
   buscar: string;
   estado: string;
   tipo: string;
-  canal: string;
 }
 
-const CONTROLES_INICIALES: Controles = { buscar: '', estado: TODOS, tipo: TODOS, canal: TODOS };
+const CONTROLES_INICIALES: Controles = { buscar: '', estado: TODOS, tipo: TODOS };
 
 function aFiltros(c: Controles): Omit<FiltrosDevoluciones, 'pagina' | 'tamano' | 'orden'> {
   return {
     buscar: c.buscar.trim() || undefined,
     estado: c.estado !== TODOS ? (c.estado as EstadoDevolucion) : undefined,
     tipo: c.tipo !== TODOS ? (c.tipo as TipoDevolucion) : undefined,
-    canal: c.canal !== TODOS ? (c.canal as Canal) : undefined,
   };
 }
 
@@ -95,14 +86,22 @@ export function DevolucionesPage() {
   const [version, setVersion] = useState(0);
 
   const bandeja = useConsulta(
-    () => fuenteDevoluciones.listar({ ...aFiltros(aplicados), orden, pagina, tamano: TAMANO_PAGINA }),
+    () => listarDevoluciones({ ...aFiltros(aplicados), orden, pagina, tamano: TAMANO_PAGINA }),
     [aplicados, orden, pagina, version],
   );
 
   const expediente = useConsulta(
-    () => (seleccionado ? fuenteDevoluciones.obtener(seleccionado) : Promise.resolve(null)),
+    () => (seleccionado ? obtenerExpediente(seleccionado) : Promise.resolve(null)),
     [seleccionado, version],
   );
+
+  // Abrir un expediente SOLICITADA lo pasa a EN_EVALUACION (2.3): se refresca la fila de la bandeja.
+  const estadoAbierto = expediente.datos?.devolucion.estado;
+  const filaAbierta = bandeja.datos?.contenido.find((d) => d.devolucionId === seleccionado);
+  const recargarBandeja = bandeja.recargar;
+  useEffect(() => {
+    if (estadoAbierto && filaAbierta && filaAbierta.estado !== estadoAbierto) recargarBandeja();
+  }, [estadoAbierto, filaAbierta, recargarBandeja]);
 
   const cambiar = (campo: keyof Controles) => (valor: string | null) =>
     setControles((c) => ({ ...c, [campo]: valor ?? TODOS }));
@@ -234,7 +233,7 @@ export function DevolucionesPage() {
         <Group align="flex-end" gap="md" wrap="wrap">
           <TextInput
             label="Buscar"
-            placeholder="Código, pedido o cliente"
+            placeholder="DEV-2026-0042 o PED-2026-00981"
             value={controles.buscar}
             onChange={(ev) => {
               const valor = ev.currentTarget.value;
@@ -256,14 +255,6 @@ export function DevolucionesPage() {
             data={OPCIONES_TIPO}
             value={controles.tipo}
             onChange={cambiar('tipo')}
-            allowDeselect={false}
-            style={{ flex: '1 1 130px' }}
-          />
-          <Select
-            label="Canal"
-            data={OPCIONES_CANAL}
-            value={controles.canal}
-            onChange={cambiar('canal')}
             allowDeselect={false}
             style={{ flex: '1 1 130px' }}
           />

@@ -1,9 +1,9 @@
 // Paneles de revisión del Mockup 06: "Detalle del expediente" y "Resolución / evaluación".
 import type { ReactNode } from 'react';
-import { ActionIcon, Box, Divider, Group, Paper, Stack, Text, Title } from '@mantine/core';
+import { ActionIcon, Box, Divider, Group, Paper, Text, Title } from '@mantine/core';
 import iconoCerrar from '@/assets/devoluciones/cerrar.svg';
 import { EstadoBadge } from '@/components/EstadoBadge';
-import type { DevolucionDetalle } from '@/types/devolucion';
+import { fechaEntrega, type Expediente } from './expediente';
 import {
   ETIQUETA_CANAL,
   ETIQUETA_TIPO,
@@ -52,14 +52,18 @@ function Dato({ etiqueta, children }: { etiqueta: string; children: ReactNode })
 
 const GRILLA_DATOS = { display: 'grid', gridTemplateColumns: '7.5rem 1fr', gap: '8px 12px' } as const;
 
+const SIN_DATO_PEDIDO = 'No disponible';
+
 export function DetalleExpediente({
-  expediente: e,
+  expediente,
   onCerrar,
 }: {
-  expediente: DevolucionDetalle;
+  expediente: Expediente;
   onCerrar: () => void;
 }) {
-  const plazo = plazoDevolucion(e);
+  const { devolucion: e, pedido } = expediente;
+  const plazo = plazoDevolucion(expediente);
+  const entrega = fechaEntrega(pedido);
 
   return (
     <TarjetaPanel
@@ -81,9 +85,9 @@ export function DetalleExpediente({
           <EstadoBadge entidad="devolucion" estado={e.estado} size="sm" />
         </Dato>
         <Dato etiqueta="Tipo">{ETIQUETA_TIPO[e.tipo]}</Dato>
-        <Dato etiqueta="Cliente">{e.nombreCliente ?? '—'}</Dato>
-        <Dato etiqueta="Canal">{e.canal ? ETIQUETA_CANAL[e.canal] : '—'}</Dato>
-        <Dato etiqueta="Fecha entrega">{e.fechaEntrega ? dia(e.fechaEntrega) : '—'}</Dato>
+        <Dato etiqueta="Cliente">{pedido ? pedido.contacto.nombreCompleto : SIN_DATO_PEDIDO}</Dato>
+        <Dato etiqueta="Canal">{pedido ? ETIQUETA_CANAL[pedido.canal] : SIN_DATO_PEDIDO}</Dato>
+        <Dato etiqueta="Fecha entrega">{entrega ? dia(entrega) : SIN_DATO_PEDIDO}</Dato>
         <Dato etiqueta="Plazo">
           {plazo ? (
             <Text span size="sm" fw={500} c={plazo.dentroDePlazo ? undefined : 'red.8'}>
@@ -95,25 +99,28 @@ export function DetalleExpediente({
           )}
         </Dato>
         <Dato etiqueta="Motivo">{textoMotivo(e.motivo, e.descripcion)}</Dato>
-        <Dato etiqueta="Evidencia">{cantidadArchivos(e)}</Dato>
+        <Dato etiqueta="Evidencia">{cantidadArchivos(e.evidencias?.length ?? 0)}</Dato>
         {e.resolucion?.fundamento && <Dato etiqueta="Fundamento">{e.resolucion.fundamento}</Dato>}
       </Box>
+      {!pedido && (
+        <Text size="xs" c="dimmed" mt="sm">
+          Ventas (M1) no respondió: faltan los datos del pedido.
+        </Text>
+      )}
     </TarjetaPanel>
   );
 }
 
-export function EvaluacionExpediente({ expediente }: { expediente: DevolucionDetalle }) {
+export function EvaluacionExpediente({ expediente }: { expediente: Expediente }) {
   const r = resumenEvaluacion(expediente);
   return (
     <TarjetaPanel titulo="Resolución / evaluación">
-      <Stack gap={0}>
-        <Box style={GRILLA_DATOS}>
-          <Dato etiqueta="Resolución">{r.resolucion}</Dato>
-          <Dato etiqueta="Stock cambio">{r.stock}</Dato>
-          <Dato etiqueta="Logística">{r.logistica}</Dato>
-          <Dato etiqueta="Reembolso">{r.reembolso}</Dato>
-        </Box>
-      </Stack>
+      <Box style={GRILLA_DATOS}>
+        <Dato etiqueta="Resolución">{r.resolucion}</Dato>
+        <Dato etiqueta="Logística">{r.logistica}</Dato>
+        <Dato etiqueta="Recepción física">{r.recepcion}</Dato>
+        <Dato etiqueta="Reembolso">{r.reembolso}</Dato>
+      </Box>
     </TarjetaPanel>
   );
 }

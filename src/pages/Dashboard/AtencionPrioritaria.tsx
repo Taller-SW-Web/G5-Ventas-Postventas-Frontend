@@ -2,14 +2,14 @@
 // La lista y la pantalla completa son las del Hub Postventa (Mockup 05, Joseph): una sola fuente para las dos.
 // "Ver" abre esa pantalla filtrada por el tipo del caso (7.3); "Ver todas", sin filtro (7.4).
 import { useNavigate } from 'react-router-dom';
-import { Badge, Button, Group, Paper, Stack, Table, Text, Title } from '@mantine/core';
+import { Alert, Badge, Button, Group, Paper, Stack, Table, Text, Title } from '@mantine/core';
 import { EstadoCarga } from '@/components/EstadoCarga';
 import { useConsulta } from '@/hooks/useConsulta';
 import {
   ETIQUETA_SITUACION,
   ETIQUETA_TIPO_CASO,
   obtenerCasosPrioritarios,
-  type CasoPrioritario,
+  type CasosPrioritarios,
   type SituacionCaso,
   type TipoCaso,
 } from '../AtencionPrioritaria/casosPrioritarios';
@@ -62,10 +62,17 @@ export function AtencionPrioritaria() {
         error={consulta.error}
         datos={consulta.datos}
         onReintentar={consulta.recargar}
+        esVacio={(r: CasosPrioritarios) => r.casos.length === 0 && r.avisos.length === 0}
         mensajeVacio="No hay casos que requieran atención prioritaria."
       >
-        {(casos: CasoPrioritario[]) => (
+        {({ casos, avisos }: CasosPrioritarios) => (
           <Stack gap="sm">
+            {/* Módulos que no respondieron: se muestra lo que sí llegó, sin romper el panel. */}
+            {avisos.map((aviso) => (
+              <Alert key={aviso} color="yellow" variant="light" p="xs">
+                <Text size="xs">{aviso}</Text>
+              </Alert>
+            ))}
             <Group gap="xs">
               {TIPOS.map((t) => (
                 <Badge key={t} variant="light" color="orange" tt="none">

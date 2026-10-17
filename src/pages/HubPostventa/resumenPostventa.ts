@@ -1,11 +1,16 @@
 // Indicadores del Hub Postventa (Mockup 05). El Hub no tiene endpoint propio (guía frontend 1.1):
-// cada número sale del servicio de su módulo.
+// cada número sale del listado de su módulo, contando con totalElementos (página de 1 elemento).
 import dayjs from 'dayjs';
-import { fuenteDevoluciones } from '@/pages/Devoluciones/fuenteDevoluciones';
+import { contarDevoluciones } from '@/services/devoluciones';
+import { listarReclamos } from '@/services/reclamos';
+import { listarReembolsos } from '@/services/reembolsos';
 import type { EstadoDevolucion } from '@/types/devolucion';
+import type { EstadoReclamo, FiltrosReclamos } from '@/types/reclamo';
+import type { FiltrosReembolsos } from '@/types/reembolso';
 
 export interface IndicadorPostventa {
-  cantidad: number;
+  /** null si el servicio de ese módulo no respondió. */
+  cantidad: number | null;
   /** Etiqueta de apoyo bajo la cifra ("+2 hoy", "2 por SLA"...). */
   detalle: string;
 }
@@ -18,31 +23,55 @@ export interface ResumenPostventa {
 
 /** Pendiente = todavía requiere una decisión del Gestor. */
 export const ESTADOS_DEVOLUCION_PENDIENTE: EstadoDevolucion[] = ['SOLICITADA', 'EN_EVALUACION'];
+/** Abierto = sin respuesta formal. */
+const ESTADOS_RECLAMO_ABIERTO: EstadoReclamo[] = ['REGISTRADO', 'EN_PROCESO'];
 
-// Valores fijos del Mockup 05 hasta que haya de dónde sacarlos:
-// - Reclamos: conectar con listarReclamos (2.10) cuando la bandeja de Fabrizio esté en main.
-// - Reembolsos: el contrato todavía no tiene un listado de reembolsos (solo 2.6 POST).
-const RECLAMOS_DEMO: IndicadorPostventa = { cantidad: 5, detalle: '2 por SLA' };
-const REEMBOLSOS_DEMO: IndicadorPostventa = { cantidad: 3, detalle: '1 por ejecutar' };
+const NO_DISPONIBLE: IndicadorPostventa = { cantidad: null, detalle: 'No disponible' };
+
+const sumar = (cantidades: number[]) => cantidades.reduce((total, n) => total + n, 0);
+
+const contarReclamos = async (filtros: FiltrosReclamos) =>
+  (await listarReclamos({ ...filtros, pagina: 0, tamano: 1 })).totalElementos;
+
+const contarReembolsos = async (filtros: FiltrosReembolsos) =>
+  (await listarReembolsos({ ...filtros, pagina: 0, tamano: 1 })).totalElementos;
 
 async function indicadorDevoluciones(): Promise<IndicadorPostventa> {
-  const listados = await Promise.all(
-    ESTADOS_DEVOLUCION_PENDIENTE.map((estado) =>
-      fuenteDevoluciones.listar({ estado, pagina: 0, tamano: 100 }),
+  const hoy = dayjs().format('YYYY-MM-DD');
+  const [pendientes, deHoy] = await Promise.all([
+    Promise.all(ESTADOS_DEVOLUCION_PENDIENTE.map((estado) => contarDevoluciones({ estado }))),
+    Promise.all(
+      ESTADOS_DEVOLUCION_PENDIENTE.map((estado) => contarDevoluciones({ estado, desde: hoy, hasta: hoy })),
     ),
-  );
-  const pendientes = listados.flatMap((l) => l.contenido);
-  const hoy = pendientes.filter((d) => dayjs(d.fechaRegistro).isSame(dayjs(), 'day')).length;
-  return {
-    cantidad: listados.reduce((total, l) => total + l.totalElementos, 0),
-    detalle: hoy > 0 ? `+${hoy} hoy` : 'Sin nuevas hoy',
-  };
+  ]);
+  const nuevas = sumar(deHoy);
+  return { cantidad: sumar(pendientes), detalle: nuevas > 0 ? `+${nuevas} hoy` : 'Sin nuevas hoy' };
 }
 
+async function indicadorReclamos(): Promise<IndicadorPostventa> {
+  // "Por SLA": abiertos vencidos o por vencer (POR_VENCER incluye CRITICO, 0 a 5 días hábiles).
+  const [abiertos, vencidos, porVencer] = await Promise.all([
+    Promise.all(ESTADOS_RECLAMO_ABIERTO.map((estado) => contarReclamos({ estado }))),
+    contarReclamos({ sla: 'VENCIDO' }),
+    contarReclamos({ sla: 'POR_VENCER' }),
+  ]);
+  return { cantidad: sumar(abiertos), detalle: `${vencidos + porVencer} por SLA` };
+}
+
+async function indicadorReembolsos(): Promise<IndicadorPostventa> {
+  const [enProceso, fallidos] = await Promise.all([
+    contarReembolsos({ estado: 'PENDIENTE' }),
+    contarReembolsos({ estado: 'FALLIDO' }),
+  ]);
+  return { cantidad: enProceso, detalle: `${fallidos} por reintentar` };
+}
+
+/** Un módulo caído no tumba el Hub: su indicador queda "No disponible". */
 export async function obtenerResumenPostventa(): Promise<ResumenPostventa> {
-  return {
-    devoluciones: await indicadorDevoluciones(),
-    reclamos: RECLAMOS_DEMO,
-    reembolsos: REEMBOLSOS_DEMO,
-  };
+  const [devoluciones, reclamos, reembolsos] = await Promise.all(
+    [indicadorDevoluciones(), indicadorReclamos(), indicadorReembolsos()].map((p) =>
+      p.catch(() => NO_DISPONIBLE),
+    ),
+  );
+  return { devoluciones, reclamos, reembolsos };
 }

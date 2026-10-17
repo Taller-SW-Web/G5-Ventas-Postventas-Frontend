@@ -85,7 +85,7 @@ function Simbolo({ area, tamano }: { area: Area; tamano: number }) {
 
 function TarjetaIndicador({ area, dato, onClick }: { area: Area; dato: IndicadorPostventa; onClick: () => void }) {
   return (
-    <UnstyledButton onClick={onClick} aria-label={`${area.indicador}: ${dato.cantidad}`}>
+    <UnstyledButton onClick={onClick} aria-label={`${area.indicador}: ${dato.cantidad ?? 'no disponible'}`}>
       <Paper withBorder radius="md" p="md" shadow="xs" h="100%">
         <Group align="flex-start" wrap="nowrap" gap="md">
           <Simbolo area={area} tamano={46} />
@@ -94,7 +94,7 @@ function TarjetaIndicador({ area, dato, onClick }: { area: Area; dato: Indicador
               {area.indicador}
             </Text>
             <Text fz={28} fw={700} lh={1.2}>
-              {dato.cantidad}
+              {dato.cantidad ?? '—'}
             </Text>
             <Badge color="gray" variant="light" tt="none" radius="xl" w="fit-content">
               {dato.detalle}
@@ -115,7 +115,7 @@ function TarjetaModulo({ area, dato, onIr }: { area: Area; dato: IndicadorPostve
           {area.titulo}
         </Text>
         <Badge color={area.color} variant="light" tt="none" radius="xl" c={TONO_TEXTO[area.color]}>
-          {area.pildora(dato.cantidad)}
+          {dato.cantidad === null ? 'No disponible' : area.pildora(dato.cantidad)}
         </Badge>
         <Button fullWidth mt="sm" onClick={onIr}>
           Ir al módulo →

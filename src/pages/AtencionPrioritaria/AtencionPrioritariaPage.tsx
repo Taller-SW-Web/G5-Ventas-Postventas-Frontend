@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ActionIcon,
+  Alert,
   Badge,
   Box,
   Button,
@@ -143,9 +144,10 @@ export function AtencionPrioritariaPage() {
   const [abierto, setAbierto] = useState<CasoPrioritario | null>(null);
   const consulta = useConsulta(obtenerCasosPrioritarios, []);
 
-  const visibles = useMemo(() => filtrar(consulta.datos ?? [], aplicados), [consulta.datos, aplicados]);
+  const casos = consulta.datos?.casos;
+  const visibles = useMemo(() => filtrar(casos ?? [], aplicados), [casos, aplicados]);
 
-  const opcionesCaso = (consulta.datos ?? []).map((c) => ({ value: c.codigo, label: `${c.codigo} · ${c.cliente}` }));
+  const opcionesCaso = (casos ?? []).map((c) => ({ value: c.codigo, label: `${c.codigo} · ${c.cliente}` }));
 
   const cambiar = (campo: keyof Controles) => (valor: string | null) =>
     setControles((c) => ({ ...c, [campo]: campo === 'caso' ? valor : (valor ?? TODOS) }));
@@ -289,10 +291,15 @@ export function AtencionPrioritariaPage() {
           </Group>
         </Group>
 
+        {consulta.datos?.avisos.map((aviso) => (
+          <Alert key={aviso} color="yellow" mb="md">
+            {aviso}
+          </Alert>
+        ))}
         <EstadoCarga
           cargando={consulta.cargando}
           error={consulta.error}
-          datos={consulta.datos ? visibles : null}
+          datos={casos ? visibles : null}
           mensajeVacio="No hay casos prioritarios con estos filtros."
           onReintentar={consulta.recargar}
         >
