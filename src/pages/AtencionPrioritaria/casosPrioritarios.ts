@@ -4,8 +4,9 @@ import { listarDevoluciones } from '@/services/devoluciones';
 import { obtenerPedido } from '@/services/pedidos';
 import { listarReclamos } from '@/services/reclamos';
 import { ETIQUETA_MOTIVO } from '@/pages/Devoluciones/formato';
+import { ETIQUETA_MOTIVO as ETIQUETA_MOTIVO_RECLAMO } from '@/pages/Reclamos/formato';
 import type { DevolucionResumen, EstadoDevolucion } from '@/types/devolucion';
-import type { MotivoReclamo, ReclamoResumen } from '@/types/reclamo';
+import type { ReclamoResumen } from '@/types/reclamo';
 
 export type TipoCaso = 'RECLAMO' | 'DEVOLUCION' | 'CAMBIO';
 export type SituacionCaso = 'VENCIDO' | 'PROXIMO_A_VENCER' | 'PENDIENTE_EVALUACION' | 'EN_EVALUACION';
@@ -45,14 +46,6 @@ export const ETIQUETA_SITUACION: Record<SituacionCaso, string> = {
 export const ETIQUETA_PRIORIDAD: Record<PrioridadCaso, string> = {
   ALTA: 'Alta',
   MEDIA: 'Media',
-};
-
-const ETIQUETA_MOTIVO_RECLAMO: Record<MotivoReclamo, string> = {
-  INCUMPLIMIENTO_PLAZO_ENTREGA: 'Incumplimiento de plazo',
-  PRODUCTO_DEFECTUOSO_O_INCORRECTO: 'Producto defectuoso o incorrecto',
-  COBRO_INDEBIDO_O_NO_RECONOCIDO: 'Cobro indebido',
-  ATENCION_INADECUADA: 'Atención inadecuada',
-  INCUMPLIMIENTO_GARANTIA: 'Incumplimiento de garantía',
 };
 
 /** Tope por consulta: la bandeja es un resumen de prioridades, no el listado completo de cada módulo. */
