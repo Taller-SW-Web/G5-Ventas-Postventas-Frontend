@@ -1,7 +1,7 @@
 // Cálculos del Dashboard a partir de 2.12. Las tasas y variaciones se calculan aquí con las mismas
 // cifras que entrega el backend; no se inventa ningún valor que el contrato no tenga.
 import dayjs from 'dayjs';
-import { obtenerMetricas } from '@/services/reclamos';
+import { listarReclamos, obtenerMetricas } from '@/services/reclamos';
 import type { Canal } from '@/types/comun';
 import type { MetricasDashboard } from '@/types/reclamo';
 
@@ -48,8 +48,8 @@ export function rangoAnterior({ desde, hasta }: Rango): Rango {
 export interface DatosDashboard {
   actual: MetricasDashboard;
   anterior: MetricasDashboard;
-  /** Pedidos por canal; null cuando el filtro ya es un solo canal. */
-  porCanal: { canal: Canal; pedidos: number }[] | null;
+  /** Métricas completas de cada canal; null cuando el filtro ya es un solo canal. */
+  porCanal: { canal: Canal; metricas: MetricasDashboard; pedidos: number }[] | null;
 }
 
 export async function cargarDashboard(rango: Rango, canal: Canal | undefined): Promise<DatosDashboard> {
@@ -61,8 +61,26 @@ export async function cargarDashboard(rango: Rango, canal: Canal | undefined): P
   return {
     actual,
     anterior,
-    porCanal: canal ? null : canales.map((m, i) => ({ canal: CANALES[i], pedidos: m.pedidos.total })),
+    porCanal: canal
+      ? null
+      : canales.map((m, i) => ({ canal: CANALES[i], metricas: m, pedidos: m.pedidos.total })),
   };
+}
+
+/**
+ * Reclamos abiertos (todo lo que no está ATENDIDO), sin importar el periodo: la tarjeta "Atención" del Figma
+ * cuenta los casos por resolver hoy. Sale de 2.10 con dos consultas de una sola fila. null si no se pudo consultar.
+ */
+export async function contarReclamosAbiertos(): Promise<number | null> {
+  try {
+    const [todos, atendidos] = await Promise.all([
+      listarReclamos({ tamano: 1 }),
+      listarReclamos({ estado: 'ATENDIDO', tamano: 1 }),
+    ]);
+    return Math.max(0, todos.totalElementos - atendidos.totalElementos);
+  } catch {
+    return null;
+  }
 }
 
 /** Anulados sobre pedidos pagados del periodo, en %. null si no hubo pedidos. */
