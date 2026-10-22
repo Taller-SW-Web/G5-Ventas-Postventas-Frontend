@@ -63,7 +63,7 @@ function parsearFecha(f?: string): number {
 
 export function AnulacionesPage() {
   // Query param ?pedidoId= desde DetallePedido o navegación externa
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const pedidoIdParam = searchParams.get('pedidoId');
 
   // Estado de filtros
@@ -86,6 +86,19 @@ export function AnulacionesPage() {
       setModalSolicitarAbierto(true);
     }
   }, [pedidoIdParam]);
+
+  const cerrarModalSolicitar = () => {
+    setModalSolicitarAbierto(false);
+    setPedidoIdSolicitud('');
+    setComentarioSolicitud('');
+    setMotivoSolicitud('SOLICITUD_CLIENTE');
+    if (searchParams.has('pedidoId')) {
+      const nuevosParams = new URLSearchParams(searchParams);
+      nuevosParams.delete('pedidoId');
+      setSearchParams(nuevosParams, { replace: true });
+    }
+    setBusqueda('');
+  };
 
   // Paginación local
   const [pagina, setPagina] = useState(1);
@@ -156,13 +169,14 @@ export function AnulacionesPage() {
         c.cliente.toLowerCase().includes(busqueda.toLowerCase());
 
       const matchEstado =
+        !filtroEstado ||
         filtroEstado === 'Todos' ||
         (filtroEstado === 'Pendiente' && c.solicitud === 'PENDIENTE') ||
         (filtroEstado === 'Aprobada' && c.solicitud === 'APROBADA') ||
         (filtroEstado === 'Rechazada' && c.solicitud === 'RECHAZADA') ||
         (filtroEstado === 'Ejecutada' && c.solicitud === 'EJECUTADA');
 
-      const matchCanal = filtroCanal === 'Todos' || c.canal === filtroCanal;
+      const matchCanal = !filtroCanal || filtroCanal === 'Todos' || c.canal === filtroCanal;
 
       return matchBusqueda && matchEstado && matchCanal;
     });
@@ -376,10 +390,10 @@ export function AnulacionesPage() {
         });
       }
 
-      setModalSolicitarAbierto(false);
-      setPedidoIdSolicitud('');
-      setComentarioSolicitud('');
-      setMotivoSolicitud('SOLICITUD_CLIENTE');
+      cerrarModalSolicitar();
+
+
+
     } catch (e: unknown) {
       notifications.show({
         title: 'Error al solicitar anulación',
@@ -433,9 +447,10 @@ export function AnulacionesPage() {
           <Grid.Col span={{ base: 12, sm: 6, md: 2 }}>
             <Select
               label="Estado de solicitud"
+              allowDeselect={false}
               value={filtroEstado}
               onChange={(val) => {
-                setFiltroEstado(val);
+                setFiltroEstado(val || 'Todos');
                 setPagina(1);
               }}
               data={['Todos', 'Pendiente', 'Aprobada', 'Rechazada', 'Ejecutada']}
@@ -445,9 +460,10 @@ export function AnulacionesPage() {
           <Grid.Col span={{ base: 12, sm: 6, md: 2 }}>
             <Select
               label="Canal"
+              allowDeselect={false}
               value={filtroCanal}
               onChange={(val) => {
-                setFiltroCanal(val);
+                setFiltroCanal(val || 'Todos');
                 setPagina(1);
               }}
               data={['Todos', 'MARKETPLACE', 'CHATBOT', 'RETAIL']}
@@ -457,9 +473,10 @@ export function AnulacionesPage() {
           <Grid.Col span={{ base: 12, sm: 6, md: 2 }}>
             <Select
               label="Orden"
+              allowDeselect={false}
               value={orden}
               onChange={(val) => {
-                setOrden(val);
+                setOrden(val || 'recientes');
                 setPagina(1);
               }}
               data={[
@@ -831,7 +848,7 @@ export function AnulacionesPage() {
       {/* Modal Iniciar Solicitud de Anulación (1.7) */}
       <Modal
         opened={modalSolicitarAbierto}
-        onClose={() => setModalSolicitarAbierto(false)}
+        onClose={cerrarModalSolicitar}
         title="Iniciar Solicitud de Anulación (F2 - 1.7)"
         size="md"
         centered
@@ -868,7 +885,7 @@ export function AnulacionesPage() {
           />
 
           <Group justify="flex-end" mt="md">
-            <Button variant="default" onClick={() => setModalSolicitarAbierto(false)} disabled={solicitandoAnulacion}>
+            <Button variant="default" onClick={cerrarModalSolicitar} disabled={solicitandoAnulacion}>
               Cancelar
             </Button>
             <Button
