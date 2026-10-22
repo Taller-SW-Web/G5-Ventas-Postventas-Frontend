@@ -160,12 +160,13 @@ export type SolicitudAnulacionResponse =
       mensaje: string;
     };
 
-/** Fila de 1.8 GET /api/v1/pedidos/anulaciones/pendientes */
+/** Fila de 1.8 GET /api/v1/pedidos/anulaciones */
 export interface AnulacionPendiente {
   solicitudAnulacionId: string;
   pedidoId: string;
   motivo: MotivoAnulacion;
   fechaSolicitud: string;
+  estado?: EstadoAnulacion;
   /** Datos del pedido para la bandeja (mockup 04). */
   canal?: Canal;
   nombreCliente?: string | null;
@@ -173,6 +174,18 @@ export interface AnulacionPendiente {
 }
 
 export type ListadoAnulacionesPendientes = Paginado<AnulacionPendiente>;
+
+/** Filtros delegados para 1.8 GET /api/v1/pedidos/anulaciones */
+export interface FiltrosListadoAnulaciones {
+  estado?: EstadoAnulacion;
+  canal?: Canal;
+  busqueda?: string;
+  page?: number;
+  size?: number;
+  sort?: string;
+  pagina?: number;
+  tamano?: number;
+}
 
 /** 1.9 PATCH /api/v1/pedidos/{pedidoId}/anulaciones/{anulacionId} */
 export interface ResolverAnulacionRequest {

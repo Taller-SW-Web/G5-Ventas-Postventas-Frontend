@@ -26,6 +26,7 @@ import { ModalConfirmacion } from '@/components/ModalConfirmacion';
 import { EstadoCarga } from '@/components/EstadoCarga';
 import { useConsulta } from '@/hooks/useConsulta';
 import {
+  listarAnulaciones,
   listarAnulacionesPendientes,
   resolverAnulacion,
   solicitarAnulacion,
@@ -34,7 +35,8 @@ import { ApiError } from '@/services/api';
 import { detallesDePedidos } from '@/services/pedidos';
 import { sesionActual } from '@/services/auth';
 import { CASOS_MOCKUP_04, type ItemBandejaAnulacion } from './datosMockup04';
-import type { ListadoAnulacionesPendientes, MotivoAnulacion } from '@/types/pedido';
+import type { Canal } from '@/types/comun';
+import type { EstadoAnulacion, ListadoAnulacionesPendientes, MotivoAnulacion } from '@/types/pedido';
 
 const OPCIONES_MOTIVO_GESTOR: { value: MotivoAnulacion; label: string }[] = [
   { value: 'SOLICITUD_CLIENTE', label: 'Solicitud del cliente (arrepentimiento / cambio de opinión)' },
@@ -100,11 +102,26 @@ export function AnulacionesPage() {
     setBusqueda('');
   };
 
-  // Paginación local
+  // Debounce para búsqueda textual (350 ms)
+  const [busquedaDebounced, setBusquedaDebounced] = useState(busqueda);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setBusquedaDebounced(busqueda);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [busqueda]);
+
+  // Paginación (base 1 para la UI, base 0 para el backend)
   const [pagina, setPagina] = useState(1);
   const elementosPorPagina = 5;
 
-  // Lista local para visualización / fallback
+  // Resetear a página 1 cuando cambian filtros, orden o búsqueda
+  useEffect(() => {
+    setPagina(1);
+    setCasoSeleccionado(null);
+  }, [busquedaDebounced, filtroEstado, filtroCanal, orden]);
+
+  // Lista local para visualización / fallback offline
   const [casosLocales, setCasosLocales] = useState<ItemBandejaAnulacion[]>(CASOS_MOCKUP_04);
 
   // Caso actualmente seleccionado para revisión en el panel lateral
@@ -117,91 +134,161 @@ export function AnulacionesPage() {
   const [comentarioAprobacion, setComentarioAprobacion] = useState('Motivo validado con el cliente');
   const [procesandoAccion, setProcesandoAccion] = useState(false);
 
-  // Consulta al backend (1.8 GET /api/v1/pedidos/anulaciones/pendientes)
-  const consultaBackend = useCallback(async (): Promise<ListadoAnulacionesPendientes> => {
-    const listado = await listarAnulacionesPendientes({ pagina: pagina - 1, tamano: elementosPorPagina });
-    // 1.8 no trae cliente, canal ni estado del pedido: se completan con el detalle de cada pedido (1.5)
-    const pedidos = await detallesDePedidos(listado.contenido.map((a) => a.pedidoId));
-    return {
-      ...listado,
-      contenido: listado.contenido.map((a) => {
-        const p = pedidos.get(a.pedidoId);
-        return p ? { ...a, canal: p.canal, nombreCliente: p.contacto?.nombreCompleto ?? null, estadoPedido: p.estado } : a;
-      }),
-    };
-  }, [pagina]);
+  // Helper para mapear el estado de la anulación al formato visual de la bandeja
+  const mapearEstadoAnulacion = (estado?: string): { autorizacion: 'Pendiente' | 'No requerida' | 'Aprobada' | 'Rechazada'; solicitud: 'PENDIENTE' | 'APROBADA' | 'RECHAZADA' | 'EJECUTADA' } => {
+    switch (estado) {
+      case 'EJECUTADA':
+        return { autorizacion: 'Aprobada', solicitud: 'APROBADA' };
+      case 'RECHAZADA':
+        return { autorizacion: 'Rechazada', solicitud: 'RECHAZADA' };
+      case 'PENDIENTE_AUTORIZACION':
+      default:
+        return { autorizacion: 'Pendiente', solicitud: 'PENDIENTE' };
+    }
+  };
 
-  const { datos: datosBackend, cargando, error, recargar } = useConsulta(consultaBackend, [consultaBackend]);
-
-  // Si el backend responde datos, se mapean; si no hay conexión o falla, se opera con los datos locales
-  const usandoDatosEnVivo = Boolean(datosBackend && datosBackend.contenido !== undefined);
-
-  const casosMostrar: ItemBandejaAnulacion[] = useMemo(() => {
-    if (usandoDatosEnVivo && datosBackend?.contenido) {
-      return datosBackend.contenido.map((item) => ({
-        solicitudAnulacionId: item.solicitudAnulacionId,
-        pedidoId: item.pedidoId,
-        fecha: item.fechaSolicitud,
-        cliente: item.nombreCliente ?? '—',
-        estadoPedido: item.estadoPedido ?? 'EN_PREPARACION',
-        canal: item.canal ?? 'MARKETPLACE',
-        motivo: item.motivo,
-        autorizacion: 'Pendiente',
-        solicitud: 'PENDIENTE',
-        solicitante: 'Cliente',
-        efectos: {
+  const mapearEfectosAnulacion = (estado?: string) => {
+    switch (estado) {
+      case 'EJECUTADA':
+        return {
+          estadoPedido: 'ANULADO',
+          stock: 'Reintegrar inventario',
+          despacho: 'Cancelar despacho si aplica',
+          reembolso: 'Originar reembolso en F4',
+        };
+      case 'RECHAZADA':
+        return {
+          estadoPedido: 'EN_PREPARACION (sin cambios)',
+          stock: 'Sin cambios',
+          despacho: 'Continúa despacho',
+          reembolso: 'No aplica',
+        };
+      case 'PENDIENTE_AUTORIZACION':
+      default:
+        return {
           estadoPedido: 'Pendiente de decisión',
           stock: 'Reintegrar si se aprueba',
           despacho: 'Cancelar si se aprueba',
           reembolso: 'Originar F4 si se aprueba',
-        },
-      }));
+        };
     }
-    return casosLocales;
-  }, [usandoDatosEnVivo, datosBackend, casosLocales]);
+  };
 
-  // Filtrado y ordenamiento
-  const casosFiltrados = useMemo(() => {
-    const filtrados = casosMostrar.filter((c) => {
-      const matchBusqueda =
-        busqueda.trim() === '' ||
-        c.pedidoId.toLowerCase().includes(busqueda.toLowerCase()) ||
-        c.cliente.toLowerCase().includes(busqueda.toLowerCase());
+  // Conversión de filtros visuales a enums de backend
+  const estadoBackend: EstadoAnulacion | undefined = useMemo(() => {
+    if (!filtroEstado || filtroEstado === 'Todos') return undefined;
+    if (filtroEstado === 'Pendiente') return 'PENDIENTE_AUTORIZACION';
+    if (filtroEstado === 'Aprobada' || filtroEstado === 'Ejecutada') return 'EJECUTADA';
+    if (filtroEstado === 'Rechazada') return 'RECHAZADA';
+    return undefined;
+  }, [filtroEstado]);
 
-      const matchEstado =
-        !filtroEstado ||
-        filtroEstado === 'Todos' ||
+  const canalBackend: Canal | undefined = useMemo(() => {
+    if (!filtroCanal || filtroCanal === 'Todos') return undefined;
+    return filtroCanal as Canal;
+  }, [filtroCanal]);
+
+  // Consulta al backend con Server-Side Filtering, Sorting y Pagination delegados
+  const consultaBackend = useCallback(async (): Promise<ListadoAnulacionesPendientes> => {
+    const listado = await listarAnulaciones({
+      estado: estadoBackend,
+      canal: canalBackend,
+      busqueda: busquedaDebounced.trim() || undefined,
+      page: pagina - 1,
+      size: elementosPorPagina,
+      sort: orden === 'antiguos' ? 'fecha,asc' : 'fecha,desc',
+    });
+
+    // Si algún item vino sin datos enriquecidos, se completa con el detalle de pedidos
+    const faltanDetalles = listado.contenido.some((a) => !a.nombreCliente || !a.canal);
+    if (faltanDetalles) {
+      const pedidos = await detallesDePedidos(listado.contenido.map((a) => a.pedidoId));
+      return {
+        ...listado,
+        contenido: listado.contenido.map((a) => {
+          const p = pedidos.get(a.pedidoId);
+          return p ? { ...a, canal: a.canal ?? p.canal, nombreCliente: a.nombreCliente ?? p.contacto?.nombreCompleto ?? null, estadoPedido: a.estadoPedido ?? p.estado } : a;
+        }),
+      };
+    }
+
+    return listado;
+  }, [estadoBackend, canalBackend, busquedaDebounced, pagina, orden, elementosPorPagina]);
+
+  const { datos: datosBackend, cargando, error, recargar } = useConsulta(consultaBackend, [consultaBackend]);
+
+  const usandoDatosEnVivo = Boolean(datosBackend && datosBackend.contenido !== undefined);
+
+  // Mapeo de items para la vista
+  const casosMostrar: ItemBandejaAnulacion[] = useMemo(() => {
+    if (usandoDatosEnVivo && datosBackend?.contenido) {
+      return datosBackend.contenido.map((item) => {
+        const estadoMapeado = mapearEstadoAnulacion(item.estado);
+        const efectosMapeados = mapearEfectosAnulacion(item.estado);
+        return {
+          solicitudAnulacionId: item.solicitudAnulacionId,
+          pedidoId: item.pedidoId,
+          fecha: item.fechaSolicitud,
+          cliente: item.nombreCliente ?? '—',
+          estadoPedido: item.estadoPedido ?? (item.estado === 'EJECUTADA' ? 'ANULADO' : 'EN_PREPARACION'),
+          canal: item.canal ?? 'MARKETPLACE',
+          motivo: item.motivo,
+          autorizacion: estadoMapeado.autorizacion,
+          solicitud: estadoMapeado.solicitud,
+          solicitante: item.nombreCliente ?? 'Cliente',
+          efectos: efectosMapeados,
+        };
+      });
+    }
+
+    // Modo fallback offline (filtrado en memoria solo para demo sin backend)
+    let filtrados = casosLocales;
+    if (busquedaDebounced.trim()) {
+      const q = busquedaDebounced.toLowerCase();
+      filtrados = filtrados.filter((c) => c.pedidoId.toLowerCase().includes(q) || c.cliente.toLowerCase().includes(q));
+    }
+    if (filtroEstado && filtroEstado !== 'Todos') {
+      filtrados = filtrados.filter((c) =>
         (filtroEstado === 'Pendiente' && c.solicitud === 'PENDIENTE') ||
         (filtroEstado === 'Aprobada' && c.solicitud === 'APROBADA') ||
         (filtroEstado === 'Rechazada' && c.solicitud === 'RECHAZADA') ||
-        (filtroEstado === 'Ejecutada' && c.solicitud === 'EJECUTADA');
-
-      const matchCanal = !filtroCanal || filtroCanal === 'Todos' || c.canal === filtroCanal;
-
-      return matchBusqueda && matchEstado && matchCanal;
-    });
-
+        (filtroEstado === 'Ejecutada' && (c.solicitud === 'EJECUTADA' || c.solicitud === 'APROBADA'))
+      );
+    }
+    if (filtroCanal && filtroCanal !== 'Todos') {
+      filtrados = filtrados.filter((c) => c.canal === filtroCanal);
+    }
     return [...filtrados].sort((a, b) => {
       const timeA = parsearFecha(a.fecha);
       const timeB = parsearFecha(b.fecha);
       return orden === 'antiguos' ? timeA - timeB : timeB - timeA;
     });
-  }, [casosMostrar, busqueda, filtroEstado, filtroCanal, orden]);
+  }, [usandoDatosEnVivo, datosBackend, casosLocales, busquedaDebounced, filtroEstado, filtroCanal, orden]);
 
-  // Paginado
-  const totalPaginas = usandoDatosEnVivo
-    ? datosBackend?.totalPaginas || 1
-    : Math.ceil(casosFiltrados.length / elementosPorPagina) || 1;
+  // Total de páginas exacto provisto por el backend (COUNT de BD) o calculado en fallback
+  const totalPaginas = Math.max(
+    1,
+    usandoDatosEnVivo
+      ? datosBackend?.totalPaginas || 1
+      : Math.ceil(casosMostrar.length / elementosPorPagina) || 1
+  );
 
+  // En datos en vivo, el backend ya aplicó LIMIT y OFFSET; en fallback, cortamos la página
   const casosPaginados = useMemo(() => {
-    if (usandoDatosEnVivo) return casosFiltrados;
+    if (usandoDatosEnVivo) return casosMostrar;
     const inicio = (pagina - 1) * elementosPorPagina;
-    return casosFiltrados.slice(inicio, inicio + elementosPorPagina);
-  }, [usandoDatosEnVivo, casosFiltrados, pagina]);
+    return casosMostrar.slice(inicio, inicio + elementosPorPagina);
+  }, [usandoDatosEnVivo, casosMostrar, pagina, elementosPorPagina]);
+
+  // Total de solicitudes para el contador (server-side totalElementos o fallback local)
+  const totalSolicitudes = usandoDatosEnVivo
+    ? (datosBackend?.totalElementos ?? 0)
+    : casosMostrar.length;
 
   // Limpiar filtros
   const handleLimpiarFiltros = () => {
     setBusqueda('');
+    setBusquedaDebounced('');
     setFiltroEstado('Todos');
     setFiltroCanal('Todos');
     setOrden('recientes');
@@ -509,7 +596,7 @@ export function AnulacionesPage() {
                 Solicitudes de Anulación
               </Title>
               <Text size="xs" c="dimmed">
-                Mostrando {casosPaginados.length} de {casosFiltrados.length} solicitudes
+                Mostrando {casosPaginados.length} de {totalSolicitudes} solicitudes
               </Text>
             </Group>
 
@@ -615,7 +702,7 @@ export function AnulacionesPage() {
                   </Table.ScrollContainer>
 
                   <Group justify="center" mt="md">
-                    <Pagination total={totalPaginas} value={pagina} onChange={setPagina} color="orange" />
+                    <Pagination total={totalPaginas} value={pagina} onChange={setPagina} boundaries={1} siblings={1} color="orange" />
                   </Group>
                 </>
               )}
