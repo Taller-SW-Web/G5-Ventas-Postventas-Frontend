@@ -2,6 +2,7 @@
 import { apiVentas } from './api';
 import type { ParametrosPaginacion } from '@/types/comun';
 import type {
+  FiltrosListadoAnulaciones,
   ListadoAnulacionesPendientes,
   ResolverAnulacionRequest,
   ResolverAnulacionResponse,
@@ -21,16 +22,23 @@ export async function solicitarAnulacion(
   return data;
 }
 
-/** 1.8 GET /api/v1/pedidos/anulaciones/pendientes (rol ADMIN_VENTAS) */
-export async function listarAnulacionesPendientes(
-  params: ParametrosPaginacion = {},
+export interface ParametrosListarAnulaciones extends ParametrosPaginacion {
+  estado?: string;
+}
+
+/** 1.8 GET /api/v1/pedidos/anulaciones (rol ADMIN_VENTAS) */
+export async function listarAnulaciones(
+  params: ParametrosListarAnulaciones = {},
 ): Promise<ListadoAnulacionesPendientes> {
   const { data } = await apiVentas.get<ListadoAnulacionesPendientes>(
-    '/api/v1/pedidos/anulaciones/pendientes',
+    '/api/v1/pedidos/anulaciones',
     { params },
   );
   return data;
 }
+
+/** Retrocompatibilidad */
+export const listarAnulacionesPendientes = listarAnulaciones;
 
 /** 1.9 PATCH /api/v1/pedidos/{pedidoId}/anulaciones/{anulacionId} (rol ADMIN_VENTAS) */
 export async function resolverAnulacion(
