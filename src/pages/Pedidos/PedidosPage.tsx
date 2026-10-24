@@ -53,13 +53,15 @@ const OPCIONES_ORDEN: { value: OrdenPedidos; label: string }[] = [
   { value: 'ANTIGUOS', label: 'Más antiguos' },
 ];
 
-/** Tarjetas del mockup: "Pendientes" son los pedidos CREADO (esperando el pago). */
+/** Tarjetas de resumen por estado oficial del pedido (F1). */
 const TARJETAS: { etiqueta: string; estado: EstadoPedido | null }[] = [
   { etiqueta: 'Total pedidos', estado: null },
-  { etiqueta: 'Pendientes', estado: 'CREADO' },
+  { etiqueta: 'Creados', estado: 'CREADO' },
   { etiqueta: 'Pagados', estado: 'PAGADO' },
+  { etiqueta: 'En preparación', estado: 'EN_PREPARACION' },
   { etiqueta: 'Despachados', estado: 'DESPACHADO' },
   { etiqueta: 'Entregados', estado: 'ENTREGADO' },
+  { etiqueta: 'Anulados', estado: 'ANULADO' },
 ];
 
 function aFiltros(b: Borrador): Omit<FiltrosPedidos, 'pagina' | 'tamano' | 'orden'> {
@@ -174,7 +176,7 @@ export function PedidosPage() {
         </Group>
       </Paper>
 
-      <SimpleGrid cols={{ base: 2, sm: 3, lg: 5 }}>
+      <SimpleGrid cols={{ base: 2, sm: 3, md: 4, lg: 7 }}>
         {TARJETAS.map((t, i) => {
           const activa = (aplicado.estado ?? null) === t.estado;
           return (
@@ -183,11 +185,11 @@ export function PedidosPage() {
               onClick={() => aplicar({ ...aplicado, estado: t.estado })}
               aria-pressed={activa}
             >
-              <Card withBorder radius="md" p="md" style={activa ? { borderColor: 'var(--mantine-primary-color-filled)' } : undefined}>
-                <Text size="sm" c="dimmed">
+              <Card withBorder radius="md" p="sm" style={activa ? { borderColor: 'var(--mantine-primary-color-filled)' } : undefined}>
+                <Text size="xs" c="dimmed" fw={500} truncate>
                   {t.etiqueta}
                 </Text>
-                <Text fw={700} fz={28}>
+                <Text fw={700} fz={24}>
                   {conteos.cargando ? '…' : conteos.error ? '—' : (conteos.datos?.[i] ?? 0).toLocaleString('es-PE')}
                 </Text>
               </Card>
