@@ -100,8 +100,14 @@ export function DevolucionesPage() {
   const filaAbierta = bandeja.datos?.contenido.find((d) => d.devolucionId === seleccionado);
   const recargarBandeja = bandeja.recargar;
   useEffect(() => {
-    if (estadoAbierto && filaAbierta && filaAbierta.estado !== estadoAbierto) recargarBandeja();
-  }, [estadoAbierto, filaAbierta, recargarBandeja]);
+    if (
+      expediente.datos?.devolucion.devolucionId === seleccionado &&
+      filaAbierta?.estado === 'SOLICITADA' &&
+      estadoAbierto === 'EN_EVALUACION'
+    ) {
+      recargarBandeja();
+    }
+  }, [expediente.datos, seleccionado, filaAbierta, estadoAbierto, recargarBandeja]);
 
   const cambiar = (campo: keyof Controles) => (valor: string | null) =>
     setControles((c) => ({ ...c, [campo]: valor ?? TODOS }));
