@@ -27,7 +27,6 @@ import { EstadoCarga } from '@/components/EstadoCarga';
 import { useConsulta } from '@/hooks/useConsulta';
 import {
   listarAnulaciones,
-  listarAnulacionesPendientes,
   resolverAnulacion,
   solicitarAnulacion,
 } from '@/services/anulaciones';
