@@ -1,7 +1,7 @@
 // Mockup 01 — Dashboard (F6). Responsable: Fabrizio
 // Indicadores de GET /api/v2/dashboard/metricas (2.12) con filtros de periodo (rango de fechas) y canal.
-// Ventas, ticket promedio, tendencia e importes por canal necesitan montos que 2.12 todavía no entrega:
-// se calculan con la bandeja de pedidos (1.4), ver cargarVentas en metricas.ts.
+// Ventas, ticket promedio, tendencia e importes por canal necesitan montos que 2.12 no entrega:
+// vienen ya sumados de M1 (1.14 GET /api/v1/pedidos/kpis), ver cargarVentas en metricas.ts.
 import { useState, type ReactNode } from 'react';
 import { AreaChart, BarChart, DonutChart } from '@mantine/charts';
 import { DatePickerInput } from '@mantine/dates';

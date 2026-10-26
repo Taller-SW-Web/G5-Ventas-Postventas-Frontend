@@ -90,6 +90,30 @@ export interface ListadoPedidos extends Paginado<PedidoResumen> {
   clienteId: string | null;
 }
 
+/** 1.14 GET /api/v1/pedidos/kpis — KPIs de ventas del Dashboard, sumados en M1. */
+export interface KpisVentas {
+  desde: string;
+  hasta: string;
+  canal: Canal | null;
+  /** Suma de pedido.total de los vendidos (PAGADO, EN_PREPARACION, DESPACHADO, ENTREGADO). */
+  montoVendido: number;
+  pedidosVendidos: number;
+  /** null si no hubo ventas. */
+  ticketPromedio: number | null;
+  /** Pedidos del periodo sin contar los que siguen en CREADO. */
+  pedidosTotal: number;
+  pedidosEntregados: number;
+  pedidosAnulados: number;
+  ventasPorDia: { fecha: string; monto: number }[];
+  ventasPorCanal: Record<Canal, number>;
+}
+
+export interface FiltrosKpis {
+  desde: string;
+  hasta: string;
+  canal?: Canal;
+}
+
 export type OrdenPedidos = 'RECIENTES' | 'ANTIGUOS';
 
 /** Filtros de 1.4, todos opcionales. canal, buscar y orden van además del contrato (Mockup 02). */

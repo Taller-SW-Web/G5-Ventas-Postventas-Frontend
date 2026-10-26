@@ -2,7 +2,9 @@
 import { apiVentas } from './api';
 import type {
   AccionPedidoResponse,
+  FiltrosKpis,
   FiltrosPedidos,
+  KpisVentas,
   ListadoPedidos,
   PedidoDetalle,
 } from '@/types/pedido';
@@ -10,6 +12,12 @@ import type {
 /** 1.4 GET /api/v1/pedidos (rol ADMIN_VENTAS). Sin clienteId lista todos los pedidos. */
 export async function listarPedidos(filtros: FiltrosPedidos): Promise<ListadoPedidos> {
   const { data } = await apiVentas.get<ListadoPedidos>('/api/v1/pedidos', { params: filtros });
+  return data;
+}
+
+/** 1.14 KPIs de ventas del Dashboard: M1 devuelve las sumas ya hechas (una sola llamada por periodo). */
+export async function obtenerKpisVentas(filtros: FiltrosKpis): Promise<KpisVentas> {
+  const { data } = await apiVentas.get<KpisVentas>('/api/v1/pedidos/kpis', { params: filtros });
   return data;
 }
 

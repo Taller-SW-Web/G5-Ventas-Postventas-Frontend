@@ -1,9 +1,10 @@
 // Cálculos del Dashboard a partir de 2.12. Las tasas y variaciones se calculan aquí con las mismas
 // cifras que entrega el backend; no se inventa ningún valor que el contrato no tenga.
 import dayjs from 'dayjs';
-import { listarPedidos } from '@/services/pedidos';
+import { obtenerKpisVentas } from '@/services/pedidos';
 import { listarReclamos, obtenerMetricas } from '@/services/reclamos';
 import type { Canal } from '@/types/comun';
+import type { KpisVentas } from '@/types/pedido';
 import type { MetricasDashboard } from '@/types/reclamo';
 
 export const CANALES: Canal[] = ['MARKETPLACE', 'CHATBOT', 'RETAIL'];
@@ -47,9 +48,9 @@ export function rangoAnterior({ desde, hasta }: Rango): Rango {
 }
 
 /**
- * Importes de venta del periodo. 2.12 no los entrega todavía, así que salen de la bandeja de pedidos (1.4):
- * se suman los pedidos creados en el periodo que se pagaron y no se anularon. También da la cohorte de pedidos
- * del periodo (total, entregados y anulados) para que la tasa de anulación no supere el 100%.
+ * Importes de venta del periodo. 2.12 no los entrega, así que vienen de 1.14 (GET /api/v1/pedidos/kpis), que M1
+ * ya devuelve sumados: pedidos creados en el periodo que se pagaron y no se anularon. También da la cohorte de
+ * pedidos del periodo (total, entregados y anulados) para que la tasa de anulación no supere el 100%.
  */
 export interface VentasPeriodo {
   monto: number;
@@ -63,33 +64,21 @@ export interface VentasPeriodo {
   porCanal: Record<Canal, number>;
 }
 
-const VENDIDO = new Set(['PAGADO', 'EN_PREPARACION', 'DESPACHADO', 'ENTREGADO']);
-
 export async function cargarVentas({ desde, hasta }: Rango, canal: Canal | undefined): Promise<VentasPeriodo> {
-  const pedidos = [];
-  for (let pagina = 0, totalPaginas = 1; pagina < totalPaginas; pagina++) {
-    const r = await listarPedidos({ desde, hasta, canal, pagina, tamano: 50 });
-    pedidos.push(...r.contenido);
-    totalPaginas = r.totalPaginas;
-  }
-  const porDia = new Map<string, number>();
-  for (let d = dayjs(desde); !d.isAfter(dayjs(hasta)); d = d.add(1, 'day')) porDia.set(d.format(F), 0);
-  const porCanal: Record<Canal, number> = { MARKETPLACE: 0, CHATBOT: 0, RETAIL: 0 };
-  const v: VentasPeriodo = { monto: 0, vendidos: 0, total: 0, entregados: 0, anulados: 0, porDia: [], porCanal };
-  for (const p of pedidos) {
-    if (p.estado === 'CREADO') continue;
-    v.total++;
-    if (p.estado === 'ENTREGADO') v.entregados++;
-    if (p.estado === 'ANULADO') v.anulados++;
-    if (!VENDIDO.has(p.estado)) continue;
-    v.monto += p.total;
-    v.vendidos++;
-    porCanal[p.canal] += p.total;
-    const dia = dayjs(p.fechaCreacion).format(F);
-    porDia.set(dia, (porDia.get(dia) ?? 0) + p.total);
-  }
-  v.porDia = [...porDia].map(([fecha, monto]) => ({ fecha, monto: Math.round(monto * 100) / 100 }));
-  return v;
+  return aVentasPeriodo(await obtenerKpisVentas({ desde, hasta, canal }));
+}
+
+/** Pasa la respuesta de 1.14 al formato que usa la pantalla. */
+export function aVentasPeriodo(k: KpisVentas): VentasPeriodo {
+  return {
+    monto: k.montoVendido,
+    vendidos: k.pedidosVendidos,
+    total: k.pedidosTotal,
+    entregados: k.pedidosEntregados,
+    anulados: k.pedidosAnulados,
+    porDia: k.ventasPorDia.map((d) => ({ fecha: d.fecha, monto: d.monto })),
+    porCanal: Object.fromEntries(CANALES.map((c) => [c, k.ventasPorCanal[c] ?? 0])) as Record<Canal, number>,
+  };
 }
 
 export interface DatosDashboard {
