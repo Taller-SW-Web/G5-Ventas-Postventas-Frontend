@@ -22,9 +22,7 @@ export async function solicitarAnulacion(
   return data;
 }
 
-export interface ParametrosListarAnulaciones extends ParametrosPaginacion {
-  estado?: string;
-}
+export interface ParametrosListarAnulaciones extends ParametrosPaginacion, FiltrosListadoAnulaciones {}
 
 /** 1.8 GET /api/v1/pedidos/anulaciones (rol ADMIN_VENTAS) */
 export async function listarAnulaciones(
