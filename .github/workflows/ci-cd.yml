@@ -1,0 +1,61 @@
+# CI/CD del frontend (Hito 4): Build → Compile → Test → Deploy a Vercel
+# - En cada PR hacia main: instala, compila (tsc) y construye (vite). No despliega.
+# - En cada push/merge a main: lo mismo y, si pasa, despliega a producción en Vercel.
+# Requiere el secret VERCEL_TOKEN en el repo (Settings → Secrets and variables → Actions).
+
+name: CI/CD Frontend
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  VERCEL_ORG_ID: team_0djkkuY2CsvooLgPdDR43lyy
+  VERCEL_PROJECT_ID: prj_hEy5mFw2NnSW3ZaGhIsNRLokwUbS
+
+jobs:
+  build:
+    name: Build, Compile y Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Compilar y construir (tsc -b && vite build)
+        run: npm run build
+
+      - name: Tests
+        run: npm test --if-present
+
+  deploy:
+    name: Deploy a Vercel (producción)
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Instalar Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Traer configuración y variables de entorno de Vercel
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build para Vercel
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
