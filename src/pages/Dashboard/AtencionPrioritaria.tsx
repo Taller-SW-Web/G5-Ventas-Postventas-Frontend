@@ -1,6 +1,7 @@
 // Panel "Atención prioritaria" del Dashboard (Mockup 01, 7.2): muestra los casos más urgentes.
 // La lista y la pantalla completa son las del Hub Postventa (Mockup 05, Joseph): una sola fuente para las dos.
-// "Ver" abre esa pantalla filtrada por el tipo del caso (7.3); "Ver todas", sin filtro (7.4).
+// "Ver" abre esa pantalla filtrada por el tipo y con el mismo caso seleccionado (7.3 y 10.3); "Ver todas", sin
+// filtro (7.4). En ambos casos "Atrás" vuelve al Dashboard (rutaPrioritarios).
 import { useNavigate } from 'react-router-dom';
 import { Alert, Badge, Button, Group, Paper, Stack, Table, Text, Title } from '@mantine/core';
 import { EstadoCarga } from '@/components/EstadoCarga';
@@ -14,17 +15,10 @@ import {
   type TipoCaso,
 } from '../AtencionPrioritaria/casosPrioritarios';
 import { dia } from '../Reclamos/formato';
+import { rutaPrioritarios } from './rutas';
 
-const RUTA_PRIORITARIOS = '/admin/postventa/prioritarios';
 const MAXIMO = 5;
 const TIPOS: TipoCaso[] = ['RECLAMO', 'DEVOLUCION', 'CAMBIO'];
-
-/** Valor del filtro "Tipo" que entiende la pantalla de Atención prioritaria (?tipo=...). */
-const FILTRO_POR_TIPO: Record<TipoCaso, string> = {
-  RECLAMO: 'RECLAMOS',
-  DEVOLUCION: 'DEVOLUCIONES',
-  CAMBIO: 'CAMBIOS',
-};
 
 /** Mismos colores que la pantalla de Atención prioritaria. */
 const COLOR_SITUACION: Record<SituacionCaso, string> = {
@@ -53,7 +47,7 @@ export function AtencionPrioritaria() {
             Reclamos por SLA y expedientes de postventa pendientes
           </Text>
         </div>
-        <Button size="xs" variant="subtle" onClick={() => navigate(RUTA_PRIORITARIOS)}>
+        <Button size="xs" variant="subtle" onClick={() => navigate(rutaPrioritarios())}>
           Ver todas →
         </Button>
       </Group>
@@ -109,7 +103,7 @@ export function AtencionPrioritaria() {
                       <Button
                         size="xs"
                         variant="default"
-                        onClick={() => navigate(`${RUTA_PRIORITARIOS}?tipo=${FILTRO_POR_TIPO[c.tipo]}`)}
+                        onClick={() => navigate(rutaPrioritarios(c))}
                       >
                         Ver
                       </Button>

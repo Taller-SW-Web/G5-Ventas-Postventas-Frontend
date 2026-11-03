@@ -37,7 +37,10 @@ interface Props {
   onActualizado: () => void;
 }
 
-/** Quién atiende (atendidoPor, máx. 50): el sub del token. Sin login (solo dev) se usa un id de prueba. */
+/**
+ * atendidoPor (máx. 50) solo por compatibilidad: con seguridad, M2 registra como autor el sub del token y no
+ * este valor (2.11). Sin login (solo dev, backend sin seguridad) M2 sí usa este id de prueba.
+ */
 function gestorActual(): string {
   return sesionActual().usuarioId ?? 'GESTOR-LOCAL';
 }

@@ -70,10 +70,14 @@ interface Controles {
 
 const CONTROLES_INICIALES: Controles = { caso: null, tipo: TODOS, prioridad: TODOS, situacion: TODOS };
 
-/** Desde el Hub se llega con ?tipo=DEVOLUCIONES o ?tipo=RECLAMOS. */
+/**
+ * Desde el Hub se llega con ?tipo=DEVOLUCIONES o ?tipo=RECLAMOS. Desde el Dashboard, "Ver" agrega ?caso=<código>
+ * para dejar seleccionado ese mismo caso (Mockup 01, 10.3) y ?desde=dashboard para que "Atrás" vuelva allí (7.4).
+ */
 function controlesDeUrl(params: URLSearchParams): Controles {
   const tipo = params.get('tipo');
-  return OPCIONES_TIPO.some((o) => o.value === tipo) ? { ...CONTROLES_INICIALES, tipo: tipo! } : CONTROLES_INICIALES;
+  const base = OPCIONES_TIPO.some((o) => o.value === tipo) ? { ...CONTROLES_INICIALES, tipo: tipo! } : CONTROLES_INICIALES;
+  return { ...base, caso: params.get('caso') || null };
 }
 
 function filtrar(casos: CasoPrioritario[], c: Controles): CasoPrioritario[] {
@@ -206,8 +210,8 @@ export function AtencionPrioritariaPage() {
           variant="default"
           size="lg"
           mt={6}
-          onClick={() => navigate('/admin/postventa')}
-          aria-label="Volver a Postventa"
+          onClick={() => navigate(params.get('desde') === 'dashboard' ? '/admin/dashboard' : '/admin/postventa')}
+          aria-label={params.get('desde') === 'dashboard' ? 'Volver al Dashboard' : 'Volver a Postventa'}
         >
           ←
         </ActionIcon>
