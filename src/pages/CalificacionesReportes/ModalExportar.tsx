@@ -3,6 +3,7 @@
 // vuelve a llamar al backend ni recalcula nada. Cerrar → sale sin descargar; Descargar → "Exportación completada".
 import { useState } from 'react';
 import { Badge, Box, Button, Center, Group, Modal, Paper, SimpleGrid, Stack, Text, Title } from '@mantine/core';
+import { ESTILO_TITULO_MODAL } from './compartido/tituloModal';
 import { notifications } from '@mantine/notifications';
 import { FiltrosAplicados } from './FiltrosAplicados';
 import { csvReporte, indicadores, nombreArchivoReporte, textoRango, type ContextoReporte, type Indicador } from './reportes';
@@ -72,7 +73,8 @@ export function ModalExportar({ abierto, contexto, onCerrar }: Props) {
         opened={abierto && !preparado}
         onClose={onCerrar}
         size="xl"
-        title={<Title order={3}>Exportar reporte</Title>}
+        title="Exportar reporte"
+        styles={ESTILO_TITULO_MODAL}
       >
         {contexto && (
           <Stack gap="md">

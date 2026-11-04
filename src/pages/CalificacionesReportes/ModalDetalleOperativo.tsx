@@ -1,5 +1,6 @@
 // Overlay_Detalle_Operacion (Mockup 09, 8.1): desglose de pedidos y postventa de la consulta aplicada.
-import { Box, Button, Group, Modal, Paper, SimpleGrid, Stack, Text, Title } from '@mantine/core';
+import { Box, Button, Group, Modal, Paper, SimpleGrid, Stack, Text } from '@mantine/core';
+import { ESTILO_TITULO_MODAL } from './compartido/tituloModal';
 import { FiltrosAplicados } from './FiltrosAplicados';
 import { indicadores, textoRango, type ContextoReporte, type Indicador } from './reportes';
 
@@ -44,7 +45,7 @@ function Columna({ titulo, subtitulo, filas, nota }: { titulo: string; subtitulo
 export function ModalDetalleOperativo({ abierto, contexto, onCerrar }: Props) {
   const filas = contexto ? indicadores(contexto.actual) : [];
   return (
-    <Modal opened={abierto} onClose={onCerrar} size="xl" title={<Title order={3}>Detalle operativo</Title>}>
+    <Modal opened={abierto} onClose={onCerrar} size="xl" title="Detalle operativo" styles={ESTILO_TITULO_MODAL}>
       {contexto && (
         <Stack gap="md">
           <Text size="sm" c="dimmed">

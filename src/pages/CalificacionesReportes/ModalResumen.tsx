@@ -1,5 +1,6 @@
 // Overlay_Resumen (Mockup 09): consolidación de las métricas contractuales para el periodo y canal aplicados.
-import { Button, Divider, Group, Modal, Stack, Text, Title } from '@mantine/core';
+import { Button, Divider, Group, Modal, Stack, Text } from '@mantine/core';
+import { ESTILO_TITULO_MODAL } from './compartido/tituloModal';
 import { indicadores, textoRango, type ContextoReporte } from './reportes';
 
 interface Props {
@@ -10,7 +11,7 @@ interface Props {
 
 export function ModalResumen({ abierto, contexto, onCerrar }: Props) {
   return (
-    <Modal opened={abierto} onClose={onCerrar} size="md" title={<Title order={3}>Resumen del reporte</Title>}>
+    <Modal opened={abierto} onClose={onCerrar} size="md" title="Resumen del reporte" styles={ESTILO_TITULO_MODAL}>
       {contexto && (
         <Stack gap="xs">
           <Text size="sm" c="dimmed">

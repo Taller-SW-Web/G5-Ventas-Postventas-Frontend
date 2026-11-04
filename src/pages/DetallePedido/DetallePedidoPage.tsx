@@ -41,6 +41,7 @@ import { ModalConfirmacion } from '@/components/ModalConfirmacion';
 import { useConsulta } from '@/hooks/useConsulta';
 import { ApiError } from '@/services/api';
 import { iniciarPreparacion, obtenerPedido, sellarPaquete } from '@/services/pedidos';
+import { estadoPago } from './estadoPago';
 import type { EstadoPedido, PedidoDetalle } from '@/types/pedido';
 import {
   ETIQUETA_ACTOR,
@@ -183,13 +184,6 @@ function HistorialEstados({ pedido }: { pedido: PedidoDetalle }) {
   );
 }
 
-/** Estado del pago derivado del estado del pedido (1.3 no trae uno propio). */
-function estadoPago(estado: EstadoPedido): { texto: string; color: string } {
-  if (estado === 'CREADO') return { texto: 'Pendiente', color: 'yellow' };
-  if (estado === 'ANULADO') return { texto: 'Anulado', color: 'red' };
-  return { texto: 'Confirmado', color: 'volt' };
-}
-
 function Detalle({ pedido, onActualizado }: { pedido: PedidoDetalle; onActualizado: () => void }) {
   const navegar = useNavigate();
   const [accion, setAccion] = useState<Accion | null>(null);
@@ -198,6 +192,7 @@ function Detalle({ pedido, onActualizado }: { pedido: PedidoDetalle; onActualiza
   const retail = pedido.canal === 'RETAIL';
   const envio = pedido.envio;
   const total = pedido.items.reduce((s, i) => s + i.cantidad * i.precioUnitario, 0);
+  const pago = estadoPago(pedido);
   // El movimiento que llevó al estado actual (el historial no garantiza orden).
   const ultimo =
     [...pedido.historialEstados].reverse().find((h) => h.estado === pedido.estado) ??
@@ -335,13 +330,8 @@ function Detalle({ pedido, onActualizado }: { pedido: PedidoDetalle; onActualiza
                 <Stack gap="xs">
                   <Dato etiqueta="Método">{pedido.pago.metodoPago ?? '—'}</Dato>
                   <Dato etiqueta="Estado del pago">
-                    <Badge
-                      variant="light"
-                      color={estadoPago(pedido.estado).color}
-                      c={estadoPago(pedido.estado).color === 'volt' ? 'volt.9' : undefined}
-                      tt="none"
-                    >
-                      {estadoPago(pedido.estado).texto}
+                    <Badge variant="light" color={pago.color} c={pago.color === 'volt' ? 'volt.9' : undefined} tt="none">
+                      {pago.texto}
                     </Badge>
                   </Dato>
                   <Dato etiqueta="Monto">{formatoMonto(pedido.pago.total)}</Dato>
