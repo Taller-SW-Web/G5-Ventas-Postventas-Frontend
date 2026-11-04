@@ -91,3 +91,78 @@ describe('estadoPago sin pago.estado (respuestas anteriores al 2026-11-04)', () 
     expect(estadoPago(pedido(null)).texto).toBe('Sin información');
   });
 });
+
+// Recorrido del bloque "Historial de estados" (1.3 tipo, agregado 2026-11-04): un REEMPLAZO nunca pasa por PAGADO.
+const h = (estado: HistorialEstado['estado'], actor: HistorialEstado['actor'], minuto: number): HistorialEstado => ({
+  estado, actor, motivo: null, fecha: `2026-11-04T06:${String(minuto).padStart(2, '0')}:00Z`,
+});
+const REEMPLAZO_ENTREGADO = [h('CREADO', 'GESTOR', 0), h('EN_PREPARACION', 'SISTEMA_PRODUCTOS', 1),
+  h('DESPACHADO', 'SISTEMA_LOGISTICA', 2), h('ENTREGADO', 'SISTEMA_LOGISTICA', 3)];
+
+/** Pedido con su tipo (undefined = M1 anterior sin el campo). */
+function conTipo(tipo: PedidoDetalle['tipo'] | undefined, estado: PedidoDetalle['estado'], historial: HistorialEstado[],
+                 cambios: Partial<PedidoDetalle> = {}): PedidoDetalle {
+  const p = { ...pedido(null, historial, estado), ...cambios };
+  if (tipo !== undefined) p.tipo = tipo;
+  return p;
+}
+
+/** Etapas que dibuja el historial, en orden, con el texto tal cual (ETIQUETA_ESTADO). */
+async function etapasDelHistorial(p: PedidoDetalle): Promise<string[]> {
+  obtenerPedido.mockResolvedValue(p);
+  renderizar(<DetallePedidoPage />, { ruta: `/admin/pedidos/${p.pedidoId}`, patron: '/admin/pedidos/:pedidoId' });
+  const titulo = await screen.findByText('Historial de estados');
+  const tarjeta = titulo.closest('.mantine-Card-root') as HTMLElement;
+  return Array.from(tarjeta.querySelectorAll('.mantine-Timeline-itemTitle p')).map((e) => (e.textContent ?? '').trim());
+}
+
+describe('Detalle del pedido — recorrido del historial según el tipo (1.3 tipo)', () => {
+  it('REEMPLAZO entregado: CREADO → EN_PREPARACION → DESPACHADO → ENTREGADO, sin PAGADO, e identificado como Reemplazo', async () => {
+    const etapas = await etapasDelHistorial(conTipo('REEMPLAZO', 'ENTREGADO', REEMPLAZO_ENTREGADO, { pago: { total: 0, moneda: 'PEN', metodoPago: null, estado: null } }));
+    expect(etapas).toEqual(['Creado', 'En preparación', 'Despachado', 'Entregado']);
+    expect(etapas).not.toContain('Pagado');
+    expect(screen.getByText('Reemplazo')).toBeTruthy();
+  });
+
+  it('REEMPLAZO en preparación: las etapas siguientes tampoco incluyen PAGADO', async () => {
+    const etapas = await etapasDelHistorial(conTipo('REEMPLAZO', 'EN_PREPARACION', REEMPLAZO_ENTREGADO.slice(0, 2)));
+    expect(etapas).toEqual(['Creado', 'En preparación', 'Despachado', 'Entregado']);
+  });
+
+  it('REEMPLAZO anulado: conserva el historial efectivo', async () => {
+    const etapas = await etapasDelHistorial(conTipo('REEMPLAZO', 'ANULADO', [h('CREADO', 'GESTOR', 0), h('EN_PREPARACION', 'SISTEMA_PRODUCTOS', 1), h('ANULADO', 'SISTEMA_PRODUCTOS', 2)]));
+    expect(etapas).toEqual(['Creado', 'En preparación', 'Anulado']);
+  });
+
+  it('VENTA: mantiene el recorrido normal con PAGADO y no se marca como Reemplazo', async () => {
+    const etapas = await etapasDelHistorial(conTipo('VENTA', 'EN_PREPARACION', [h('CREADO', 'CANAL_CHATBOT', 0), h('PAGADO', 'PASARELA_PAGOS', 1), h('EN_PREPARACION', 'SISTEMA_LOGISTICA', 2)]));
+    expect(etapas).toEqual(['Creado', 'Pagado', 'En preparación', 'Despachado', 'Entregado']);
+    expect(screen.queryByText('Reemplazo')).toBeNull();
+  });
+
+  it('RETAIL: sigue con PAGADO → ENTREGADO', async () => {
+    const etapas = await etapasDelHistorial(conTipo('VENTA', 'ENTREGADO', [h('PAGADO', 'CLIENTE', 0), h('ENTREGADO', 'CLIENTE', 0)], { canal: 'RETAIL' }));
+    expect(etapas).toEqual(['Pagado', 'Entregado']);
+  });
+
+  it('Estado logístico en CREADO: reemplazo -> Pendiente de confirmación de stock; venta -> Pendiente de pago', async () => {
+    const estadoLogistico = async (p: PedidoDetalle) => {
+      obtenerPedido.mockResolvedValue(p);
+      renderizar(<DetallePedidoPage />, { ruta: `/admin/pedidos/${p.pedidoId}`, patron: '/admin/pedidos/:pedidoId' });
+      const etiqueta = await screen.findByText('Estado logístico');
+      const texto = (etiqueta.nextElementSibling?.textContent ?? '').trim();
+      cleanup();
+      return texto;
+    };
+    expect(await estadoLogistico(conTipo('REEMPLAZO', 'CREADO', [h('CREADO', 'GESTOR', 0)]))).toBe('Pendiente de confirmación de stock');
+    expect(await estadoLogistico(conTipo('VENTA', 'CREADO', [h('CREADO', 'CANAL_CHATBOT', 0)]))).toBe('Pendiente de pago');
+    // Sin tipo (M1 anterior) se mantiene el texto de una venta
+    expect(await estadoLogistico(conTipo(undefined, 'CREADO', [h('CREADO', 'CANAL_CHATBOT', 0)]))).toBe('Pendiente de pago');
+  });
+
+  it('respuesta anterior sin tipo y con total cero: no se deduce que sea un reemplazo', async () => {
+    const etapas = await etapasDelHistorial(conTipo(undefined, 'EN_PREPARACION', REEMPLAZO_ENTREGADO.slice(0, 2), { pago: { total: 0, moneda: 'PEN', metodoPago: null, estado: null } }));
+    expect(etapas).toEqual(['Creado', 'Pagado', 'En preparación', 'Despachado', 'Entregado']);
+    expect(screen.queryByText('Reemplazo')).toBeNull();
+  });
+});

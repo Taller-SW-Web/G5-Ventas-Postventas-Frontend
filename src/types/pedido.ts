@@ -68,11 +68,16 @@ export interface HistorialEstado {
   motivo: string | null;
 }
 
+/** VENTA: pedido normal (1.1). REEMPLAZO: orden sin cobro de un CAMBIO (F3, 1.11); nunca pasa por PAGADO. */
+export type TipoPedido = 'VENTA' | 'REEMPLAZO';
+
 /** 1.3 GET /api/v1/pedidos/{pedidoId} */
 export interface PedidoDetalle {
   pedidoId: string;
   canal: Canal;
   estado: EstadoPedido;
+  /** Agregado 2026-11-04 (aditivo). Ausente en un M1 anterior: entonces se trata como una venta normal. */
+  tipo?: TipoPedido | null;
   contacto: ContactoPedido;
   pago: PagoPedido;
   envio: EnvioPedido | null;

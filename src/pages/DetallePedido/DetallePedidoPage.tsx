@@ -56,6 +56,11 @@ import {
 /** Recorrido normal de un pedido con despacho. RETAIL salta de PAGADO a ENTREGADO (acuerdo G4). */
 const FLUJO: EstadoPedido[] = ['CREADO', 'PAGADO', 'EN_PREPARACION', 'DESPACHADO', 'ENTREGADO'];
 const FLUJO_RETAIL: EstadoPedido[] = ['PAGADO', 'ENTREGADO'];
+/** Orden de reemplazo de un CAMBIO (1.11): sin cobro, pasa de CREADO a EN_PREPARACION al reservarse el stock. */
+const FLUJO_REEMPLAZO: EstadoPedido[] = ['CREADO', 'EN_PREPARACION', 'DESPACHADO', 'ENTREGADO'];
+
+/** Solo con el tipo que manda M1 (1.3); nunca se deduce del total en cero ni de la falta de pago. */
+const esReemplazo = (pedido: PedidoDetalle) => pedido.tipo === 'REEMPLAZO';
 
 type Accion = 'preparacion' | 'despacho';
 
@@ -68,6 +73,13 @@ const ESTADO_LOGISTICO: Record<EstadoPedido, string> = {
   ENTREGADO: 'Entregado',
   ANULADO: 'Sin despacho (pedido anulado)',
 };
+
+/** Un reemplazo en CREADO no espera un pago: espera que Productos confirme la reserva (1.11). */
+function estadoLogistico(pedido: PedidoDetalle): string {
+  return esReemplazo(pedido) && pedido.estado === 'CREADO'
+    ? 'Pendiente de confirmación de stock'
+    : ESTADO_LOGISTICO[pedido.estado];
+}
 
 /** "DOMICILIO" → "Domicilio", "RECOJO_TIENDA" → "Recojo tienda": texto legible del código de modalidad. */
 function legible(codigo: string): string {
@@ -143,7 +155,9 @@ function HistorialEstados({ pedido }: { pedido: PedidoDetalle }) {
     ? pedido.historialEstados.map((h) => h.estado)
     : pedido.canal === 'RETAIL'
       ? FLUJO_RETAIL
-      : FLUJO;
+      : esReemplazo(pedido)
+        ? FLUJO_REEMPLAZO
+        : FLUJO;
   const fechaDe = (estado: EstadoPedido) => pedido.historialEstados.find((h) => h.estado === estado)?.fecha;
   const activo = pasos.lastIndexOf(pedido.estado);
   const colorActual = anulado ? 'red' : 'orange';
@@ -232,6 +246,11 @@ function Detalle({ pedido, onActualizado }: { pedido: PedidoDetalle; onActualiza
       <SimpleGrid cols={{ base: 2, sm: 3, lg: 5 }}>
         <Tarjeta etiqueta="Código" icono={IconHash} color="orange">
           {pedido.pedidoId}
+          {esReemplazo(pedido) && (
+            <Badge display="block" mt={4} size="sm" variant="light" color="signal" tt="none">
+              Reemplazo
+            </Badge>
+          )}
         </Tarjeta>
         <Tarjeta etiqueta="Estado" icono={IconCircleCheck} color="signal">
           <Text component="span" inherit tt="uppercase">
@@ -344,7 +363,7 @@ function Detalle({ pedido, onActualizado }: { pedido: PedidoDetalle; onActualiza
                     <Dato etiqueta="Tienda">{envio?.tiendaId ?? '—'}</Dato>
                   ) : (
                     <>
-                      <Dato etiqueta="Estado logístico">{ESTADO_LOGISTICO[pedido.estado]}</Dato>
+                      <Dato etiqueta="Estado logístico">{estadoLogistico(pedido)}</Dato>
                       <Dato etiqueta="Modalidad">{envio?.modalidad ? legible(envio.modalidad) : '—'}</Dato>
                       <Dato etiqueta="Fecha estimada">
                         {envio?.fechaEstimadaEntrega ? formatoFecha(envio.fechaEstimadaEntrega) : '—'}
