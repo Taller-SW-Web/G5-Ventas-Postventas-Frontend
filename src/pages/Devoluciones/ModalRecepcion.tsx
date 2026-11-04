@@ -43,6 +43,8 @@ export function ModalRecepcion({
   const pendientes = lineasDevueltas(expediente).filter((l) => l.recibidas < l.cantidad);
   const [cantidades, setCantidades] = useState<Record<string, Cantidades>>({});
   const [archivo, setArchivo] = useState<File | null>(null);
+  // Evidencia ya subida (2.1): si después falla la recepción, el reintento reutiliza su URL en vez de subirla de nuevo
+  const [subida, setSubida] = useState<{ archivo: File; url: string } | null>(null);
   const [procesando, setProcesando] = useState(false);
 
   const valor = (productoId: string, porDefecto: number): Cantidades =>
@@ -71,13 +73,33 @@ export function ModalRecepcion({
   function cerrar() {
     setCantidades({});
     setArchivo(null);
+    setSubida(null);
     onCerrar();
+  }
+
+  /** URL de la evidencia, o null si la subida falló (ya se avisó y no se registra la recepción). */
+  async function urlEvidencia(): Promise<string | undefined | null> {
+    if (!archivo) return undefined;
+    if (subida?.archivo === archivo) return subida.url;
+    try {
+      const { url } = await subirEvidencia(archivo);
+      setSubida({ archivo, url });
+      return url;
+    } catch (error) {
+      notifications.show({
+        color: 'red',
+        title: 'No se pudo adjuntar la evidencia',
+        message: `${mensajeError(error)} La recepción no se registró.`,
+      });
+      return null;
+    }
   }
 
   async function confirmar() {
     setProcesando(true);
     try {
-      const evidencia = archivo ? (await subirEvidencia(archivo)).url : undefined;
+      const evidencia = await urlEvidencia();
+      if (evidencia === null) return;
       const respuesta = await confirmarRecepcion(devolucion.devolucionId, {
         lineas: lineas
           .filter((l) => l.recibida > 0)
@@ -93,6 +115,7 @@ export function ModalRecepcion({
       });
       setCantidades({});
       setArchivo(null);
+      setSubida(null);
       onConfirmado();
     } catch (error) {
       notifications.show({ color: 'red', title: 'No se pudo confirmar la recepción', message: mensajeError(error) });

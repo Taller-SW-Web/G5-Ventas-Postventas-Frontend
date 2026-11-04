@@ -2,6 +2,7 @@
 // OJO: los mockups todavía no son finales (guía frontend, advertencia inicial):
 // no hardcodear los 5 colores de KPI del Dashboard; el naranja debe predominar.
 import { createTheme, type MantineColorsTuple } from '@mantine/core';
+import tabla from './tabla.module.css';
 
 // Escalas de 10 tonos provisionales construidas alrededor del HEX oficial de cada token.
 // Reemplazar por las tonalidades definitivas cuando se cierren en Figma.
@@ -107,5 +108,9 @@ export const theme = createTheme({
     Paper: { defaultProps: { radius: 'md' } },
     Modal: { defaultProps: { radius: 'lg', centered: true } },
     Badge: { defaultProps: { radius: 'xl' } },
+    // La página activa se marca con fondo oscuro (Mockups 02 y 04, sección de paginación)
+    Pagination: { defaultProps: { color: 'ink.9' } },
+    // Cabecera de tabla con fondo cloud-subtle (Mockups 02 a 04)
+    Table: { classNames: { thead: tabla.thead, th: tabla.th } },
   },
 });
