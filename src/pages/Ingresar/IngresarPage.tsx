@@ -1,83 +1,191 @@
-// Entrada al portal con el JWT de Seguridad (G7). Acepta el token de dos formas:
-// 1) en la URL (/ingresar#token=...), si la SPA de G7 redirige aquí después del login;
-// 2) pegado a mano, copiado de la SPA de G7.
-// Solo guarda el token si trae el rol ADMIN_VENTAS; la validación real la hace el backend.
-import { useEffect, useState } from 'react';
+// Entrada al portal autenticando contra Seguridad (G7).
+// Soporta autenticación directa (CLIENTE) y flujo 2FA/OTP al correo (ADMIN_VENTAS).
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Alert, Button, Center, Paper, Stack, Text, Textarea, Title } from '@mantine/core';
-import { ROL_GESTOR, cerrarSesion, guardarToken, sesionActual } from '@/services/auth';
-
-/** Token de #token=... o ?token=...; lo borra de la barra de direcciones para que no quede en el historial. */
-function tokenDeLaUrl(): string | null {
-  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-  const query = new URLSearchParams(window.location.search);
-  const token = hash.get('token') ?? query.get('token');
-  if (token) window.history.replaceState(null, '', window.location.pathname);
-  return token;
-}
+import {
+  Alert,
+  Button,
+  Center,
+  Paper,
+  PasswordInput,
+  PinInput,
+  Stack,
+  Text,
+  TextInput,
+  Title,
+} from '@mantine/core';
+import {
+  guardarToken,
+  leerClaims,
+  rutaInicialSegunRol,
+} from '@/services/auth';
+import { iniciarSesionG7, verificarOtpG7 } from '@/services/authG7';
 
 export function IngresarPage() {
   const navegar = useNavigate();
-  const [token, setToken] = useState('');
+
+  // Estados del formulario
+  const [correo, setCorreo] = useState('');
+  const [contrasena, setContrasena] = useState('');
+  const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function ingresar(valor: string) {
-    guardarToken(valor.trim());
-    const sesion = sesionActual();
-    if (!sesion.autenticado) {
-      cerrarSesion();
-      setError('El token no es válido o ya venció. Vuelve a iniciar sesión en Seguridad y cópialo de nuevo.');
+  // Estados del flujo 2FA
+  const [paso2fa, setPaso2fa] = useState(false);
+  const [desafioId, setDesafioId] = useState('');
+  const [codigoOtp, setCodigoOtp] = useState('');
+  const [mensaje2fa, setMensaje2fa] = useState('');
+
+  function procesarTokenYRedirigir(tokenRecibido: string) {
+    guardarToken(tokenRecibido.trim());
+    const claims = leerClaims(tokenRecibido);
+    const roles = claims?.roles ?? [];
+
+    if (roles.length === 0) {
+      setError('El token recibido no tiene roles asociados en el sistema.');
       return;
     }
-    if (!sesion.roles.includes(ROL_GESTOR)) {
-      cerrarSesion();
-      setError(`El token no tiene el rol ${ROL_GESTOR}. Este portal es solo para el Gestor de ventas.`);
-      return;
-    }
-    navegar('/admin/pedidos', { replace: true });
+
+    const destino = rutaInicialSegunRol(roles);
+    navegar(destino, { replace: true });
   }
 
-  useEffect(() => {
-    const deUrl = tokenDeLaUrl();
-    if (deUrl) ingresar(deUrl);
-    // Solo al abrir la página.
-  }, []);
+  async function manejarInicioSesion(e: React.FormEvent) {
+    e.preventDefault();
+    if (!correo.trim() || !contrasena.trim()) {
+      setError('Por favor completa tu correo y contraseña.');
+      return;
+    }
 
-  const urlLogin = import.meta.env.VITE_SEGURIDAD_LOGIN_URL;
+    setCargando(true);
+    setError(null);
+
+    try {
+      const resultado = await iniciarSesionG7(correo.trim(), contrasena.trim());
+
+      if (resultado.requiereMfa) {
+        setDesafioId(resultado.desafioId);
+        setMensaje2fa(resultado.mensaje);
+        setPaso2fa(true);
+      } else {
+        procesarTokenYRedirigir(resultado.accessToken);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al conectar con el servicio de autenticación.');
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  async function manejarVerificarOtp(e: React.FormEvent) {
+    e.preventDefault();
+    if (codigoOtp.length < 6) {
+      setError('Ingresa el código completo de 6 dígitos enviado a tu correo.');
+      return;
+    }
+
+    setCargando(true);
+    setError(null);
+
+    try {
+      const tokenFinal = await verificarOtpG7(desafioId, codigoOtp);
+      procesarTokenYRedirigir(tokenFinal);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Código de verificación inválido o expirado.');
+    } finally {
+      setCargando(false);
+    }
+  }
 
   return (
-    <Center mih="100vh" p="md">
-      <Paper withBorder radius="md" p="xl" maw={520} w="100%">
-        <Stack>
-          <Title order={2}>Ingresar al portal</Title>
-          <Text size="sm" c="dimmed">
-            Inicia sesión en Seguridad con una cuenta de Gestor ({ROL_GESTOR}), copia tu token de acceso y pégalo aquí.
-          </Text>
-          {urlLogin && (
-            <Button component="a" href={urlLogin} variant="default">
-              Ir a Seguridad
-            </Button>
-          )}
-          <Textarea
-            label="Token de acceso"
-            placeholder="eyJhbGciOi..."
-            autosize
-            minRows={3}
-            value={token}
-            onChange={(e) => {
-              setToken(e.currentTarget.value);
-              setError(null);
-            }}
-          />
-          {error && (
-            <Alert color="red" title="No se pudo ingresar">
-              {error}
-            </Alert>
-          )}
-          <Button onClick={() => ingresar(token)} disabled={!token.trim()}>
-            Ingresar
-          </Button>
-        </Stack>
+    <Center mih="100vh" p="md" bg="gray.0">
+      <Paper withBorder shadow="md" radius="md" p="xl" maw={460} w="100%">
+        {!paso2fa ? (
+          <form onSubmit={manejarInicioSesion}>
+            <Stack gap="md">
+              <div>
+                <Title order={2} c="blue.9">Iniciar Sesión</Title>
+                <Text size="sm" c="dimmed">
+                  Módulo de Ventas y Postventa (Autenticado por G7)
+                </Text>
+              </div>
+
+              {error && (
+                <Alert color="red" title="Error de autenticación">
+                  {error}
+                </Alert>
+              )}
+
+              <TextInput
+                label="Correo electrónico"
+                placeholder="usuario@ejemplo.com"
+                type="email"
+                required
+                value={correo}
+                onChange={(e) => setCorreo(e.currentTarget.value)}
+                disabled={cargando}
+              />
+
+              <PasswordInput
+                label="Contraseña"
+                placeholder="Tu contraseña"
+                required
+                value={contrasena}
+                onChange={(e) => setContrasena(e.currentTarget.value)}
+                disabled={cargando}
+              />
+
+              <Button type="submit" fullWidth loading={cargando} mt="xs">
+                Ingresar
+              </Button>
+            </Stack>
+          </form>
+        ) : (
+          <form onSubmit={manejarVerificarOtp}>
+            <Stack gap="md" align="center">
+              <div>
+                <Title order={2} c="blue.9" ta="center">Segundo Factor (2FA)</Title>
+                <Text size="sm" c="dimmed" ta="center" mt={4}>
+                  {mensaje2fa}
+                </Text>
+              </div>
+
+              {error && (
+                <Alert color="red" title="Código inválido" w="100%">
+                  {error}
+                </Alert>
+              )}
+
+              <PinInput
+                length={6}
+                size="md"
+                type="number"
+                value={codigoOtp}
+                onChange={setCodigoOtp}
+                disabled={cargando}
+                autoFocus
+              />
+
+              <Button type="submit" fullWidth loading={cargando} mt="xs">
+                Confirmar código
+              </Button>
+
+              <Button
+                variant="subtle"
+                size="xs"
+                color="gray"
+                onClick={() => {
+                  setPaso2fa(false);
+                  setCodigoOtp('');
+                  setError(null);
+                }}
+                disabled={cargando}
+              >
+                ← Volver al login
+              </Button>
+            </Stack>
+          </form>
+        )}
       </Paper>
     </Center>
   );

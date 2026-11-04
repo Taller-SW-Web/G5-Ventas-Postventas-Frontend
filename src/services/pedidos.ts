@@ -15,6 +15,18 @@ export async function listarPedidos(filtros: FiltrosPedidos): Promise<ListadoPed
   return data;
 }
 
+/** 1.4b GET /api/v1/pedidos/me (rol CLIENTE). Retorna los pedidos asociados al sub del JWT. */
+export async function listarMisPedidos(filtros?: {
+  estado?: string;
+  desde?: string;
+  hasta?: string;
+  page?: number;
+  pageSize?: number;
+}): Promise<ListadoPedidos> {
+  const { data } = await apiVentas.get<ListadoPedidos>('/api/v1/pedidos/me', { params: filtros });
+  return data;
+}
+
 /** 1.14 KPIs de ventas del Dashboard: M1 devuelve las sumas ya hechas (una sola llamada por periodo). */
 export async function obtenerKpisVentas(filtros: FiltrosKpis): Promise<KpisVentas> {
   const { data } = await apiVentas.get<KpisVentas>('/api/v1/pedidos/kpis', { params: filtros });
