@@ -40,57 +40,54 @@ function TarjetaEvidencia({ evidencia, onAbrir }: { evidencia: Evidencia; onAbri
   );
 }
 
-/** Lo que se ve cuando el archivo no se puede mostrar (almacén de evidencias no disponible). */
-function MarcadorFoto() {
+/** La foto no se pudo cargar o no tiene URL: se dice así, sin simular una imagen. */
+function MarcadorFoto({ conUrl }: { conUrl: boolean }) {
   return (
-    <Stack align="center" gap={6} py={48}>
+    <Stack align="center" gap={6} py={48} px="md">
       <Recuadro fondo="orange.1" tamano={100} radio={24}>
         <img src={iconoFotoGrande} width={34} height={34} alt="" />
       </Recuadro>
       <Text fw={600} mt="sm">
-        Foto del producto reportado
+        {conUrl ? 'No se pudo cargar la imagen' : 'La evidencia no tiene un archivo disponible'}
       </Text>
-      <Text size="xs" c="dimmed">
-        Evidencia visual vinculada al expediente
-      </Text>
+      {conUrl && (
+        <Text size="xs" c="dimmed" ta="center">
+          Prueba con "Abrir el archivo original"; si tampoco abre, el almacén de evidencias no está disponible.
+        </Text>
+      )}
     </Stack>
   );
 }
 
-function MarcadorPdf({ expediente: { devolucion: e, pedido } }: { expediente: Expediente }) {
-  const filas: [string, string][] = [
-    ['Pedido', e.pedidoId],
-    ['Cliente', pedido?.contacto.nombreCompleto ?? '—'],
-    ['Fecha', dia(e.fechaRegistro)],
-  ];
+/**
+ * El PDF no se incrusta: el almacén puede prohibir mostrarlo dentro de otra página (X-Frame-Options del almacén
+ * local de M2) y un iframe bloqueado no avisa con onError, quedaría una ventana vacía que parece funcionar.
+ * Se abre en otra pestaña, donde el navegador lo muestra siempre que el archivo exista.
+ */
+function AvisoPdf({ url, expediente: { devolucion: e } }: { url: string | undefined; expediente: Expediente }) {
   return (
-    <Paper withBorder radius="xs" p="lg" maw={376} mx="auto">
-      <Group gap="md" mb="lg" wrap="nowrap">
+    <Paper withBorder radius="md" p="lg" bg="cloud.2">
+      <Group gap="md" wrap="nowrap" align="flex-start">
         <Recuadro fondo="signal.1" tamano={48}>
           <img src={iconoDocumento} width={34} height={34} alt="" />
         </Recuadro>
-        <Text fw={700}>COMPROBANTE DE COMPRA</Text>
+        <Stack gap={4}>
+          <Text fw={600}>{url ? 'El PDF se abre en otra pestaña' : 'El comprobante no tiene un archivo disponible'}</Text>
+          <Text size="xs" c="dimmed">
+            Expediente {e.devolucionId} · pedido {e.pedidoId} · registrado el {dia(e.fechaRegistro)}
+          </Text>
+          {url && (
+            <Text size="xs" c="dimmed">
+              La vista previa integrada no está disponible para documentos PDF.
+            </Text>
+          )}
+        </Stack>
       </Group>
-      <Stack gap="sm">
-        {filas.map(([etiqueta, valor]) => (
-          <Group key={etiqueta} gap={0} wrap="nowrap">
-            <Text size="xs" c="dimmed" w={106}>
-              {etiqueta}
-            </Text>
-            <Text size="xs" fw={600}>
-              {valor}
-            </Text>
-          </Group>
-        ))}
-      </Stack>
-      <Stack gap={12} mt="xl">
-        {['100%', '87%', '94%'].map((ancho) => (
-          <Box key={ancho} h={8} w={ancho} bg="cloud.4" style={{ borderRadius: 4 }} />
-        ))}
-      </Stack>
-      <Text size="xs" c="dimmed" ta="center" mt="xl">
-        Documento de respaldo asociado al expediente
-      </Text>
+      {url && (
+        <Button component="a" href={url} target="_blank" rel="noreferrer" fullWidth mt="md">
+          Abrir PDF en otra pestaña
+        </Button>
+      )}
     </Paper>
   );
 }
@@ -126,16 +123,14 @@ function VistaPrevia({
             {conArchivo ? (
               <Image src={evidencia.url} alt="Foto del producto reportado" fit="contain" mah={420} onError={() => setFallo(true)} />
             ) : (
-              <MarcadorFoto />
+              <MarcadorFoto conUrl={Boolean(evidencia.url)} />
             )}
           </Box>
-        ) : conArchivo ? (
-          <iframe src={evidencia.url} title="Comprobante adjunto" style={{ width: '100%', height: 420, border: 0 }} onError={() => setFallo(true)} />
         ) : (
-          <MarcadorPdf expediente={expediente} />
+          <AvisoPdf url={evidencia.url || undefined} expediente={expediente} />
         ))}
-      <Group justify={evidencia?.url ? 'space-between' : 'flex-end'} mt="lg">
-        {evidencia?.url && (
+      <Group justify={evidencia?.url && esImagen ? 'space-between' : 'flex-end'} mt="lg">
+        {evidencia?.url && esImagen && (
           <Anchor href={evidencia.url} target="_blank" rel="noreferrer" size="sm">
             Abrir el archivo original
           </Anchor>

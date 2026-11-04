@@ -81,63 +81,84 @@ export function aVentasPeriodo(k: KpisVentas): VentasPeriodo {
   };
 }
 
+export type ConteoPedidos = MetricasDashboard['pedidos'];
+
+/**
+ * Hay dos bases de conteo de pedidos y cada tasa usa una sola:
+ * - Cohorte (1.14): pedidos creados en el periodo, con su estado actual. Reemplaza `pedidos` en `actual` y
+ *   `anterior`, y es la base de la tasa de anulación, la distribución y los conteos de Reportes y su CSV.
+ * - Hechos (2.12 tal cual): pagos, anulaciones y entregas ocurridos en el periodo, por la fecha del hecho
+ *   (ESP-15 §6). Es la base de la tasa de devolución, porque devolucionesAprobadas también se cuenta así.
+ */
 export interface DatosDashboard {
   actual: MetricasDashboard;
   anterior: MetricasDashboard;
+  hechos: { actual: ConteoPedidos; anterior: ConteoPedidos };
   ventas: VentasPeriodo;
   ventasAnterior: VentasPeriodo;
-  /** Métricas completas de cada canal; null cuando el filtro ya es un solo canal. */
+  /**
+   * Métricas de cada canal; null cuando el filtro ya es un solo canal. `metricas.pedidos` y `pedidos` son la
+   * cohorte de 1.14 del canal, así la suma de los canales coincide con el total del periodo.
+   */
   porCanal: { canal: Canal; metricas: MetricasDashboard; pedidos: number }[] | null;
 }
 
+/** Pone en `pedidos` la cohorte de 1.14 (cada pedido del periodo cuenta una vez, con su estado actual). */
+export function conCohorte(m: MetricasDashboard, v: VentasPeriodo): MetricasDashboard {
+  return { ...m, pedidos: { total: v.total, anulados: v.anulados, entregados: v.entregados } };
+}
+
 export async function cargarDashboard(rango: Rango, canal: Canal | undefined): Promise<DatosDashboard> {
-  const [actual, anterior, ventas, ventasAnterior, ...canales] = await Promise.all([
+  const [actual, anterior, ventas, ventasAnterior, canales] = await Promise.all([
     obtenerMetricas({ ...rango, canal }),
     obtenerMetricas({ ...rangoAnterior(rango), canal }),
     cargarVentas(rango, canal),
     cargarVentas(rangoAnterior(rango), canal),
-    ...(canal ? [] : CANALES.map((c) => obtenerMetricas({ ...rango, canal: c }))),
+    canal
+      ? null
+      : Promise.all(
+          CANALES.map(async (c) => {
+            const [m, v] = await Promise.all([obtenerMetricas({ ...rango, canal: c }), cargarVentas(rango, c)]);
+            const metricas = conCohorte(m, v);
+            return { canal: c, metricas, pedidos: metricas.pedidos.total };
+          }),
+        ),
   ]);
-  // Tasas y distribución sobre la misma cohorte de pedidos del periodo (cada pedido cuenta una vez)
-  const conCohorte = (m: MetricasDashboard, v: VentasPeriodo): MetricasDashboard => ({
-    ...m,
-    pedidos: { total: v.total, anulados: v.anulados, entregados: v.entregados },
-  });
   return {
     actual: conCohorte(actual, ventas),
     anterior: conCohorte(anterior, ventasAnterior),
+    hechos: { actual: actual.pedidos, anterior: anterior.pedidos },
     ventas,
     ventasAnterior,
-    porCanal: canal
-      ? null
-      : canales.map((m, i) => ({ canal: CANALES[i], metricas: m, pedidos: m.pedidos.total })),
+    porCanal: canales,
   };
 }
 
 /**
- * Reclamos abiertos (todo lo que no está ATENDIDO), sin importar el periodo: la tarjeta "Atención" del Figma
- * cuenta los casos por resolver hoy. Sale de 2.10 con dos consultas de una sola fila. null si no se pudo consultar.
+ * Reclamos abiertos (todo lo que no está ATENDIDO) de todos los canales, sin importar el periodo: la tarjeta
+ * "Atención" del Figma cuenta los casos por resolver hoy. 2.10 no filtra por canal. Sale de 2.10 con dos consultas
+ * de una sola fila; si falla, el error llega a la pantalla (no se muestra una cifra inventada).
  */
-export async function contarReclamosAbiertos(): Promise<number | null> {
-  try {
-    const [todos, atendidos] = await Promise.all([
-      listarReclamos({ tamano: 1 }),
-      listarReclamos({ estado: 'ATENDIDO', tamano: 1 }),
-    ]);
-    return Math.max(0, todos.totalElementos - atendidos.totalElementos);
-  } catch {
-    return null;
-  }
+export async function contarReclamosAbiertos(): Promise<number> {
+  const [todos, atendidos] = await Promise.all([
+    listarReclamos({ tamano: 1 }),
+    listarReclamos({ estado: 'ATENDIDO', tamano: 1 }),
+  ]);
+  return todos.totalElementos - atendidos.totalElementos;
 }
 
-/** Anulados sobre pedidos del periodo, en %. null si no hubo pedidos. */
+/** Anulados sobre pedidos de la cohorte del periodo (1.14), en %. null si no hubo pedidos. */
 export function tasaAnulacion(m: MetricasDashboard): number | null {
   return m.pedidos.total > 0 ? (m.pedidos.anulados / m.pedidos.total) * 100 : null;
 }
 
-/** Devoluciones aprobadas sobre pedidos entregados del periodo, en %. null si no hubo entregas. */
-export function tasaDevolucion(m: MetricasDashboard): number | null {
-  return m.pedidos.entregados > 0 ? (m.postventa.devolucionesAprobadas / m.pedidos.entregados) * 100 : null;
+/**
+ * Devoluciones aprobadas en el periodo sobre pedidos entregados en el periodo, en %: ambas cifras salen de 2.12
+ * por la fecha del hecho, mismo periodo y canal. Es una razón de actividad, no una cohorte: si se aprueban
+ * devoluciones de pedidos entregados antes, puede pasar de 100% y se muestra tal cual. null si no hubo entregas.
+ */
+export function tasaDevolucion(devolucionesAprobadas: number, entregados: number): number | null {
+  return entregados > 0 ? (devolucionesAprobadas / entregados) * 100 : null;
 }
 
 /** Variación porcentual (cantidades). null si el periodo anterior fue 0 o no hay dato. */

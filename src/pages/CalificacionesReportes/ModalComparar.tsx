@@ -1,5 +1,6 @@
 // Modal_Comparar_reportes (Mockup 09, 5.4): periodo aplicado frente al periodo anterior de la misma duración.
-import { Badge, Button, Group, Modal, Stack, Table, Text, Title } from '@mantine/core';
+import { Badge, Button, Group, Modal, Stack, Table, Text } from '@mantine/core';
+import { ESTILO_TITULO_MODAL } from './compartido/tituloModal';
 import { diferencia, variacionPorcentual } from '../Dashboard/metricas';
 import { FiltrosAplicados } from './FiltrosAplicados';
 import { indicadores, textoRango, type ContextoReporte, type Indicador } from './reportes';
@@ -22,7 +23,7 @@ function textoVariacion(actual: Indicador, anterior: Indicador): string {
 
 export function ModalComparar({ abierto, contexto, onCerrar }: Props) {
   return (
-    <Modal opened={abierto} onClose={onCerrar} size="xl" title={<Title order={3}>Comparar resultados</Title>}>
+    <Modal opened={abierto} onClose={onCerrar} size="xl" title="Comparar resultados" styles={ESTILO_TITULO_MODAL}>
       {contexto && (
         <Stack gap="md">
           <Text size="sm" c="dimmed">

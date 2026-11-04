@@ -3,8 +3,9 @@
 import { useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  ActionIcon,
+  Alert,
   Badge,
+  Box,
   Button,
   Card,
   Divider,
@@ -18,12 +19,29 @@ import {
   Title,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { EstadoBadge } from '@/components/EstadoBadge';
+import {
+  IconBuildingStore,
+  IconCalendar,
+  IconCash,
+  IconCircleCheck,
+  IconCreditCard,
+  IconHash,
+  IconId,
+  IconMail,
+  IconMapPin,
+  IconPhone,
+  IconTruckDelivery,
+  IconUser,
+  type Icon,
+} from '@tabler/icons-react';
+import { BotonVolver } from '@/components/BotonVolver';
 import { EstadoCarga } from '@/components/EstadoCarga';
+import { IconoTarjeta } from '@/components/IconoTarjeta';
 import { ModalConfirmacion } from '@/components/ModalConfirmacion';
 import { useConsulta } from '@/hooks/useConsulta';
 import { ApiError } from '@/services/api';
 import { iniciarPreparacion, obtenerPedido, sellarPaquete } from '@/services/pedidos';
+import { estadoPago } from './estadoPago';
 import type { EstadoPedido, PedidoDetalle } from '@/types/pedido';
 import {
   ETIQUETA_ACTOR,
@@ -41,33 +59,71 @@ const FLUJO_RETAIL: EstadoPedido[] = ['PAGADO', 'ENTREGADO'];
 
 type Accion = 'preparacion' | 'despacho';
 
-function Tarjeta({ etiqueta, children }: { etiqueta: string; children: ReactNode }) {
+/** Situación logística que muestra el bloque Despacho para cada estado del pedido (Mockup 03, 6.3). */
+const ESTADO_LOGISTICO: Record<EstadoPedido, string> = {
+  CREADO: 'Pendiente de pago',
+  PAGADO: 'Pendiente de preparación',
+  EN_PREPARACION: 'En preparación',
+  DESPACHADO: 'Despachado',
+  ENTREGADO: 'Entregado',
+  ANULADO: 'Sin despacho (pedido anulado)',
+};
+
+/** "DOMICILIO" → "Domicilio", "RECOJO_TIENDA" → "Recojo tienda": texto legible del código de modalidad. */
+function legible(codigo: string): string {
+  const texto = codigo.replace(/_/g, ' ').toLowerCase();
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
+}
+
+function direccionDe(envio: PedidoDetalle['envio']): string {
+  return [envio?.direccion, envio?.distrito, envio?.provincia].filter(Boolean).join(', ') || '—';
+}
+
+function Tarjeta({ etiqueta, icono, color, children }: { etiqueta: string; icono: Icon; color: string; children: ReactNode }) {
   return (
-    <Card withBorder radius="md" p="md">
-      <Text size="sm" c="dimmed">
-        {etiqueta}
-      </Text>
-      <Text component="div" fw={700} size="lg" mt={4}>
-        {children}
-      </Text>
+    <Card withBorder radius="md" p="md" shadow="xs">
+      <Group gap="sm" wrap="nowrap">
+        <IconoTarjeta icono={icono} color={color} tamano={36} />
+        <div style={{ minWidth: 0 }}>
+          <Text size="xs" c="dimmed">
+            {etiqueta}
+          </Text>
+          <Text component="div" fw={700} size="md" style={{ overflowWrap: 'anywhere' }}>
+            {children}
+          </Text>
+        </div>
+      </Group>
     </Card>
   );
 }
 
-function Seccion({ titulo, children }: { titulo: string; children: ReactNode }) {
+/** Bloque del detalle; con icono, este va a la izquierda del contenido (Pago y Despacho, Mockup 03). */
+function Seccion({ titulo, icono, color, children }: { titulo: string; icono?: Icon; color?: string; children: ReactNode }) {
   return (
-    <Card withBorder radius="md" p="md">
-      <Title order={3}>{titulo}</Title>
+    <Card withBorder radius="md" p="md" shadow="xs" h="100%">
+      <Title order={3} size="h4">
+        {titulo}
+      </Title>
       <Divider my="sm" />
-      {children}
+      {icono ? (
+        <Group gap="md" wrap="nowrap" align="flex-start">
+          <IconoTarjeta icono={icono} color={color ?? 'orange'} />
+          <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
+        </Group>
+      ) : (
+        children
+      )}
     </Card>
   );
 }
 
-function Dato({ etiqueta, children }: { etiqueta: string; children: ReactNode }) {
+function Dato({ etiqueta, icono: Icono, children }: { etiqueta: string; icono?: Icon; children: ReactNode }) {
   return (
     <Group gap="xs" wrap="nowrap" align="flex-start">
-      <Text size="sm" c="dimmed" w={150} style={{ flexShrink: 0 }}>
+      {Icono && (
+        <Icono size={16} stroke={2} color="var(--mantine-color-gray-6)" aria-hidden style={{ flexShrink: 0, marginTop: 2 }} />
+      )}
+      <Text size="sm" c="dimmed" w={Icono ? 128 : 140} style={{ flexShrink: 0 }}>
         {etiqueta}
       </Text>
       <Text component="div" size="sm" fw={500}>
@@ -77,6 +133,10 @@ function Dato({ etiqueta, children }: { etiqueta: string; children: ReactNode })
   );
 }
 
+/**
+ * Recorrido del pedido con la etapa actual destacada en naranja y la etiqueta "Estado actual" (Mockup 03, 7).
+ * Las etapas ya pasadas muestran su fecha del historial; las siguientes, solo su nombre.
+ */
 function HistorialEstados({ pedido }: { pedido: PedidoDetalle }) {
   const anulado = pedido.estado === 'ANULADO';
   const pasos = anulado
@@ -86,21 +146,26 @@ function HistorialEstados({ pedido }: { pedido: PedidoDetalle }) {
       : FLUJO;
   const fechaDe = (estado: EstadoPedido) => pedido.historialEstados.find((h) => h.estado === estado)?.fecha;
   const activo = pasos.lastIndexOf(pedido.estado);
+  const colorActual = anulado ? 'red' : 'orange';
 
   return (
-    <Timeline active={activo} bulletSize={18} lineWidth={2} color={anulado ? 'red' : undefined}>
+    <Timeline active={-1} bulletSize={16} lineWidth={2}>
       {pasos.map((estado, i) => {
         const fecha = fechaDe(estado);
+        const actual = i === activo;
         return (
           <Timeline.Item
             key={`${estado}-${i}`}
+            lineVariant="dashed"
+            color={actual ? colorActual : 'gray'}
+            bullet={actual ? <Box w={8} h={8} bg={`${colorActual}.7`} style={{ borderRadius: '50%' }} /> : null}
             title={
-              <Group gap="xs">
-                <Text size="sm" fw={600}>
+              <Group gap="xs" justify="space-between" wrap="nowrap">
+                <Text size="sm" fw={600} tt="uppercase">
                   {ETIQUETA_ESTADO[estado]}
                 </Text>
-                {i === activo && (
-                  <Badge size="xs" variant="light">
+                {actual && (
+                  <Badge size="sm" variant="light" color={colorActual} tt="none">
                     Estado actual
                   </Badge>
                 )}
@@ -127,6 +192,7 @@ function Detalle({ pedido, onActualizado }: { pedido: PedidoDetalle; onActualiza
   const retail = pedido.canal === 'RETAIL';
   const envio = pedido.envio;
   const total = pedido.items.reduce((s, i) => s + i.cantidad * i.precioUnitario, 0);
+  const pago = estadoPago(pedido);
   // El movimiento que llevó al estado actual (el historial no garantiza orden).
   const ultimo =
     [...pedido.historialEstados].reverse().find((h) => h.estado === pedido.estado) ??
@@ -164,13 +230,23 @@ function Detalle({ pedido, onActualizado }: { pedido: PedidoDetalle; onActualiza
   return (
     <Stack gap="lg">
       <SimpleGrid cols={{ base: 2, sm: 3, lg: 5 }}>
-        <Tarjeta etiqueta="Código">{pedido.pedidoId}</Tarjeta>
-        <Tarjeta etiqueta="Estado">
-          <EstadoBadge entidad="pedido" estado={pedido.estado} size="lg" />
+        <Tarjeta etiqueta="Código" icono={IconHash} color="orange">
+          {pedido.pedidoId}
         </Tarjeta>
-        <Tarjeta etiqueta="Canal">{ETIQUETA_CANAL[pedido.canal]}</Tarjeta>
-        <Tarjeta etiqueta="Fecha">{formatoFecha(pedido.fechaCreacion)}</Tarjeta>
-        <Tarjeta etiqueta="Total">{formatoMonto(pedido.pago.total)}</Tarjeta>
+        <Tarjeta etiqueta="Estado" icono={IconCircleCheck} color="signal">
+          <Text component="span" inherit tt="uppercase">
+            {ETIQUETA_ESTADO[pedido.estado]}
+          </Text>
+        </Tarjeta>
+        <Tarjeta etiqueta="Canal" icono={IconBuildingStore} color="signal">
+          {ETIQUETA_CANAL[pedido.canal]}
+        </Tarjeta>
+        <Tarjeta etiqueta="Fecha" icono={IconCalendar} color="yellow">
+          {formatoFecha(pedido.fechaCreacion)}
+        </Tarjeta>
+        <Tarjeta etiqueta="Total" icono={IconCash} color="volt">
+          {formatoMonto(pedido.pago.total)}
+        </Tarjeta>
       </SimpleGrid>
 
       <Grid>
@@ -178,14 +254,27 @@ function Detalle({ pedido, onActualizado }: { pedido: PedidoDetalle; onActualiza
           <Stack gap="lg">
             <Seccion titulo="Datos del pedido">
               <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xs">
-                <Dato etiqueta="Cliente">{pedido.contacto.nombreCompleto}</Dato>
-                <Dato etiqueta="Fecha de registro">{formatoFechaHora(pedido.fechaCreacion)}</Dato>
-                <Dato etiqueta="Documento">
+                <Dato etiqueta="Cliente" icono={IconUser}>
+                  {pedido.contacto.nombreCompleto}
+                </Dato>
+                <Dato etiqueta="Fecha de registro" icono={IconCalendar}>
+                  {formatoFechaHora(pedido.fechaCreacion)}
+                </Dato>
+                <Dato etiqueta="Documento" icono={IconId}>
                   {pedido.contacto.tipoDocumento} {pedido.contacto.numeroDocumento}
                 </Dato>
-                <Dato etiqueta="Correo">{pedido.contacto.email}</Dato>
-                <Dato etiqueta="Canal">{ETIQUETA_CANAL[pedido.canal]}</Dato>
-                <Dato etiqueta="Teléfono">{pedido.contacto.telefono ?? '—'}</Dato>
+                <Dato etiqueta="Correo" icono={IconMail}>
+                  {pedido.contacto.email}
+                </Dato>
+                <Dato etiqueta="Canal" icono={IconBuildingStore}>
+                  {ETIQUETA_CANAL[pedido.canal]}
+                </Dato>
+                <Dato etiqueta="Teléfono" icono={IconPhone}>
+                  {pedido.contacto.telefono ?? '—'}
+                </Dato>
+                <Dato etiqueta={retail ? 'Tienda' : 'Dirección de entrega'} icono={IconMapPin}>
+                  {retail ? (envio?.tiendaId ?? '—') : direccionDe(envio)}
+                </Dato>
               </SimpleGrid>
             </Seccion>
 
@@ -229,7 +318,7 @@ function Detalle({ pedido, onActualizado }: { pedido: PedidoDetalle; onActualiza
                     <Text size="sm">{formatoMonto(pedido.pago.total - total)}</Text>
                   </Group>
                 )}
-                <Group gap="xl">
+                <Group gap="xl" bg="cloud.4" px="md" py="xs" style={{ borderRadius: 'var(--mantine-radius-sm)' }}>
                   <Text fw={700}>Total</Text>
                   <Text fw={700}>{formatoMonto(pedido.pago.total)}</Text>
                 </Group>
@@ -237,30 +326,30 @@ function Detalle({ pedido, onActualizado }: { pedido: PedidoDetalle; onActualiza
             </Seccion>
 
             <SimpleGrid cols={{ base: 1, md: 2 }}>
-              <Seccion titulo="Pago">
+              <Seccion titulo="Pago" icono={IconCreditCard} color="signal">
                 <Stack gap="xs">
                   <Dato etiqueta="Método">{pedido.pago.metodoPago ?? '—'}</Dato>
                   <Dato etiqueta="Estado del pago">
-                    {pedido.estado === 'CREADO' ? 'Pendiente' : pedido.estado === 'ANULADO' ? 'Anulado' : 'Confirmado'}
+                    <Badge variant="light" color={pago.color} c={pago.color === 'volt' ? 'volt.9' : undefined} tt="none">
+                      {pago.texto}
+                    </Badge>
                   </Dato>
                   <Dato etiqueta="Monto">{formatoMonto(pedido.pago.total)}</Dato>
                 </Stack>
               </Seccion>
 
-              <Seccion titulo={retail ? 'Entrega en tienda' : 'Despacho'}>
+              <Seccion titulo={retail ? 'Entrega en tienda' : 'Despacho'} icono={IconTruckDelivery} color="ink">
                 <Stack gap="xs">
                   {retail ? (
                     <Dato etiqueta="Tienda">{envio?.tiendaId ?? '—'}</Dato>
                   ) : (
                     <>
-                      <Dato etiqueta="Estado logístico">{ETIQUETA_ESTADO[pedido.estado]}</Dato>
-                      <Dato etiqueta="Modalidad">{envio?.modalidad ?? '—'}</Dato>
+                      <Dato etiqueta="Estado logístico">{ESTADO_LOGISTICO[pedido.estado]}</Dato>
+                      <Dato etiqueta="Modalidad">{envio?.modalidad ? legible(envio.modalidad) : '—'}</Dato>
                       <Dato etiqueta="Fecha estimada">
                         {envio?.fechaEstimadaEntrega ? formatoFecha(envio.fechaEstimadaEntrega) : '—'}
                       </Dato>
-                      <Dato etiqueta="Dirección">
-                        {[envio?.direccion, envio?.distrito, envio?.provincia].filter(Boolean).join(', ') || '—'}
-                      </Dato>
+                      <Dato etiqueta="Dirección">{direccionDe(envio)}</Dato>
                       {envio?.referencia && <Dato etiqueta="Referencia">{envio.referencia}</Dato>}
                     </>
                   )}
@@ -280,18 +369,38 @@ function Detalle({ pedido, onActualizado }: { pedido: PedidoDetalle; onActualiza
               <Stack>
                 {puedePreparar && <Button onClick={() => setAccion('preparacion')}>Pasar a preparación</Button>}
                 {puedeSellar && <Button onClick={() => setAccion('despacho')}>Paquete sellado</Button>}
-                {puedeAnular && (
-                  <Button
-                    variant="outline"
-                    onClick={() => navegar(`/admin/anulaciones?pedidoId=${encodeURIComponent(pedido.pedidoId)}`)}
-                  >
-                    Iniciar anulación
-                  </Button>
-                )}
-                {!puedePreparar && !puedeSellar && !puedeAnular && (
-                  <Text size="sm" c="dimmed">
-                    No hay acciones para un pedido {ETIQUETA_ESTADO[pedido.estado].toLowerCase()}.
+                {puedeSellar && (
+                  <Text size="xs" c="dimmed">
+                    Pasa a Despachado cuando Despacho confirme la salida del paquete.
                   </Text>
+                )}
+                {pedido.estado === 'ENTREGADO' && (
+                  <Alert color="green" variant="light" p="sm" title="Pedido entregado">
+                    <Text size="xs">La atención posterior continúa por los procesos de postventa.</Text>
+                  </Alert>
+                )}
+                {puedeAnular ? (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => navegar(`/admin/anulaciones?pedidoId=${encodeURIComponent(pedido.pedidoId)}`)}
+                    >
+                      Iniciar anulación
+                    </Button>
+                    {pedido.estado === 'EN_PREPARACION' && (
+                      <Text size="xs" c="dimmed">
+                        En preparación la anulación requiere tu autorización como Gestor.
+                      </Text>
+                    )}
+                  </>
+                ) : (
+                  <Alert color="gray" variant="light" p="sm" title="Anulación no disponible">
+                    <Text size="xs">
+                      {pedido.estado === 'ANULADO'
+                        ? 'El pedido ya está anulado.'
+                        : `Un pedido ${ETIQUETA_ESTADO[pedido.estado].toLowerCase()} ya no se puede anular.`}
+                    </Text>
+                  </Alert>
                 )}
               </Stack>
             </Seccion>
@@ -301,7 +410,7 @@ function Detalle({ pedido, onActualizado }: { pedido: PedidoDetalle; onActualiza
                 <Dato etiqueta="Última actualización">{formatoFechaHora(pedido.ultimaActualizacion)}</Dato>
                 {ultimo && (
                   <>
-                    <Dato etiqueta="Responsable">{ETIQUETA_ACTOR[ultimo.actor]}</Dato>
+                    <Dato etiqueta="Usuario responsable">{ETIQUETA_ACTOR[ultimo.actor]}</Dato>
                     <Dato etiqueta="Movimiento reciente">
                       {ETIQUETA_ESTADO[ultimo.estado]}
                       {ultimo.motivo ? ` — ${ultimo.motivo}` : ''}
@@ -333,16 +442,13 @@ function Detalle({ pedido, onActualizado }: { pedido: PedidoDetalle; onActualiza
 
 export function DetallePedidoPage() {
   const { pedidoId = '' } = useParams();
-  const navegar = useNavigate();
   const consulta = useConsulta(() => obtenerPedido(pedidoId), [pedidoId]);
   const noExiste = consulta.error instanceof ApiError && consulta.error.status === 404;
 
   return (
     <Stack gap="lg">
       <Group>
-        <ActionIcon variant="default" size="lg" onClick={() => navegar('/admin/pedidos')} aria-label="Volver a pedidos">
-          ←
-        </ActionIcon>
+        <BotonVolver a="/admin/pedidos" etiqueta="Volver a pedidos" />
         <Title order={1}>Detalle del pedido</Title>
       </Group>
 

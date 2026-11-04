@@ -8,17 +8,19 @@ import type { EstadoReembolso } from '@/types/reembolso';
 
 // Colores provisionales con la paleta semántica; la definición final viene de Figma.
 const COLORES = {
+  // Colores de las capturas del Mockup 02 (pagado signal, despachado gris oscuro, entregado volt)
   pedido: {
     CREADO: 'gray',
-    PAGADO: 'blue',
+    PAGADO: 'signal',
     EN_PREPARACION: 'yellow',
-    DESPACHADO: 'signal',
-    ENTREGADO: 'green',
+    DESPACHADO: 'ink',
+    ENTREGADO: 'volt',
     ANULADO: 'red',
   },
+  // Mockup 04: ejecutada en signal, pendiente amarilla
   anulacion: {
     PENDIENTE_AUTORIZACION: 'yellow',
-    EJECUTADA: 'green',
+    EJECUTADA: 'signal',
     RECHAZADA: 'red',
   },
   // Colores del Mockup 06 (Figma): amarillo, signal, volt, rojo y gris.
@@ -61,6 +63,7 @@ const COLORES = {
 const ETIQUETAS: Partial<Record<string, string>> = {
   CRITICO: 'Crítico',
   EN_EVALUACION: 'En evaluación',
+  EN_PREPARACION: 'En preparación',
 };
 
 type EntidadEstado =
@@ -85,10 +88,19 @@ function etiqueta(estado: string): string {
   return texto.charAt(0).toUpperCase() + texto.slice(1);
 }
 
-export function EstadoBadge({ entidad, estado, texto, ...props }: EstadoBadgeProps) {
+export function EstadoBadge({ entidad, estado, texto, style, ...props }: EstadoBadgeProps) {
   const colores: Record<string, string> = COLORES[entidad];
+  const color = colores[estado];
   return (
-    <Badge variant="light" color={colores[estado]} {...props}>
+    // min-width: max-content evita que una columna estrecha corte el estado ("EN PREPA…"): el texto es el dato.
+    // El texto en volt claro no se lee sobre su fondo suave: se usa el tono oscuro de volt.
+    <Badge
+      variant="light"
+      color={color}
+      c={color === 'volt' ? 'volt.9' : undefined}
+      style={[{ minWidth: 'max-content' }, style]}
+      {...props}
+    >
       {texto ?? etiqueta(estado)}
     </Badge>
   );
