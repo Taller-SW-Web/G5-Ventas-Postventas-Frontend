@@ -1,10 +1,13 @@
-// Sesión del Gestor. El login lo resuelve Seguridad (G7); aquí solo se guarda y lee el JWT.
+// Sesión de usuarios (Gestor y Cliente). Autenticación vía Seguridad (G7).
 import type { Rol } from '@/types/comun';
 
 const CLAVE_TOKEN = 'g5.token';
 
 /** Rol exigido para todo el portal del Gestor (/admin/*). Nunca GESTOR ni ADMIN. */
 export const ROL_GESTOR: Rol = 'ADMIN_VENTAS';
+
+/** Rol de compradores para la consulta de pedidos propios (/mis-pedidos). */
+export const ROL_CLIENTE: Rol = 'CLIENTE';
 
 export function obtenerToken(): string | null {
   return localStorage.getItem(CLAVE_TOKEN);
@@ -25,7 +28,7 @@ interface ClaimsJwt {
 }
 
 /** Decodifica el payload del JWT sin validar firma (la validación real la hace el backend). */
-function leerClaims(token: string): ClaimsJwt | null {
+export function leerClaims(token: string): ClaimsJwt | null {
   try {
     const payload = token.split('.')[1];
     if (!payload) return null;
@@ -69,4 +72,15 @@ export function sesionActual(): { autenticado: boolean; roles: string[]; usuario
 
 export function tieneRol(rol: Rol): boolean {
   return sesionActual().roles.includes(rol);
+}
+
+/** Determina la ruta por defecto a la que debe dirigirse el usuario según sus roles. */
+export function rutaInicialSegunRol(roles: string[]): string {
+  if (roles.includes(ROL_GESTOR)) {
+    return '/admin/pedidos';
+  }
+  if (roles.includes(ROL_CLIENTE)) {
+    return '/mis-pedidos';
+  }
+  return '/acceso-denegado';
 }
