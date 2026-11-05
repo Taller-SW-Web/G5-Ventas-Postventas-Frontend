@@ -16,7 +16,7 @@ import {
   Title,
 } from '@mantine/core';
 import {
-  guardarToken,
+  guardarSesion,
   leerClaims,
   rutaInicialSegunRol,
 } from '@/services/auth';
@@ -43,8 +43,8 @@ export function IngresarPage() {
   const [reenviando, setReenviando] = useState(false);
   const [infoReenvio, setInfoReenvio] = useState<string | null>(null);
 
-  function procesarTokenYRedirigir(tokenRecibido: string) {
-    guardarToken(tokenRecibido.trim());
+  function procesarTokensYRedirigir(tokenRecibido: string, refreshToken?: string) {
+    guardarSesion(tokenRecibido.trim(), refreshToken?.trim());
     const claims = leerClaims(tokenRecibido);
     const roles = claims?.roles ?? [];
 
@@ -83,7 +83,7 @@ export function IngresarPage() {
           setMensaje2fa('Ingresa el código de 6 dígitos de tu segundo factor.');
         }
       } else {
-        procesarTokenYRedirigir(resultado.accessToken);
+        procesarTokensYRedirigir(resultado.accessToken, resultado.refreshToken);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al conectar con el servicio de autenticación.');
@@ -103,8 +103,8 @@ export function IngresarPage() {
     setError(null);
 
     try {
-      const tokenFinal = await verificarOtpG7(challengeToken, codigoOtp);
-      procesarTokenYRedirigir(tokenFinal);
+      const respuestaOtp = await verificarOtpG7(challengeToken, codigoOtp);
+      procesarTokensYRedirigir(respuestaOtp.accessToken, respuestaOtp.refreshToken);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Código de verificación inválido o expirado.');
     } finally {
