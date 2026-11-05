@@ -21,6 +21,11 @@ export interface RespuestaLoginDesafioMfa {
 
 export type RespuestaLogin = RespuestaLoginExitoso | RespuestaLoginDesafioMfa;
 
+export interface TokenVerificadoResponse {
+  accessToken: string;
+  refreshToken?: string;
+}
+
 /**
  * Inicia sesión con credenciales directas (SPEC-05 / SPEC-09 de G7).
  * Si la cuenta tiene MFA activo (ADMIN_VENTAS), retorna requiereMfa: true y el challengeToken canónico.
@@ -97,7 +102,7 @@ export async function solicitarEnvioOtpG7(challengeToken: string, canal: 'EMAIL'
 /**
  * Valida el código OTP de 6 dígitos con el challengeToken para obtener los tokens de sesión (/auth/otp/verificar, SPEC-09).
  */
-export async function verificarOtpG7(challengeToken: string, codigo: string): Promise<string> {
+export async function verificarOtpG7(challengeToken: string, codigo: string): Promise<TokenVerificadoResponse> {
   const url = `${URL_BASE_SEGURIDAD.replace(/\/auth\/?$/, '')}/auth/otp/verificar`;
 
   const respuesta = await fetch(url, {
@@ -120,5 +125,40 @@ export async function verificarOtpG7(challengeToken: string, codigo: string): Pr
     throw new Error('No se recibió el token de acceso tras verificar el segundo factor.');
   }
 
-  return token;
+  return {
+    accessToken: token,
+    refreshToken: datos.refreshToken || datos.refresh_token,
+  };
+}
+
+/**
+ * Renueva la sesión rotando el refreshToken (SPEC-06, RF-06.1).
+ * Devuelve el nuevo par de tokens. Si falla (401), el llamador debe cerrar sesión.
+ */
+export async function renovarSesionG7(refreshTokenActual: string): Promise<{ accessToken: string; refreshToken?: string }> {
+  const url = `${URL_BASE_SEGURIDAD.replace(/\/auth\/?$/, '')}/auth/refresh`;
+
+  const respuesta = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ refreshToken: refreshTokenActual }),
+  });
+
+  const datos = await respuesta.json().catch(() => ({}));
+
+  if (!respuesta.ok) {
+    throw new Error(datos.detail || datos.mensaje || 'Sesión expirada. Por favor vuelve a ingresar.');
+  }
+
+  const token = datos.accessToken || datos.access_token || datos.token;
+  if (!token) {
+    throw new Error('Respuesta inválida al renovar sesión.');
+  }
+
+  return {
+    accessToken: token,
+    refreshToken: datos.refreshToken || datos.refresh_token,
+  };
 }
