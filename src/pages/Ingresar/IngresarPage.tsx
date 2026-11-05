@@ -1,5 +1,5 @@
 // Entrada al portal autenticando contra Seguridad (G7).
-// Soporta autenticación directa (CLIENTE) y flujo 2FA/OTP al correo (ADMIN_VENTAS).
+// Soporta autenticación directa (CLIENTE) y flujo completo 2FA/OTP al correo (ADMIN_VENTAS).
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -19,22 +19,28 @@ import {
   leerClaims,
   rutaInicialSegunRol,
 } from '@/services/auth';
-import { iniciarSesionG7, verificarOtpG7 } from '@/services/authG7';
+import {
+  iniciarSesionG7,
+  solicitarEnvioOtpG7,
+  verificarOtpG7,
+} from '@/services/authG7';
 
 export function IngresarPage() {
   const navegar = useNavigate();
 
-  // Estados del formulario
+  // Estados del formulario login
   const [correo, setCorreo] = useState('');
   const [contrasena, setContrasena] = useState('');
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Estados del flujo 2FA
+  // Estados del flujo 2FA (MFA)
   const [paso2fa, setPaso2fa] = useState(false);
-  const [desafioId, setDesafioId] = useState('');
+  const [challengeToken, setChallengeToken] = useState('');
   const [codigoOtp, setCodigoOtp] = useState('');
   const [mensaje2fa, setMensaje2fa] = useState('');
+  const [reenviando, setReenviando] = useState(false);
+  const [infoReenvio, setInfoReenvio] = useState<string | null>(null);
 
   function procesarTokenYRedirigir(tokenRecibido: string) {
     guardarToken(tokenRecibido.trim());
@@ -64,9 +70,17 @@ export function IngresarPage() {
       const resultado = await iniciarSesionG7(correo.trim(), contrasena.trim());
 
       if (resultado.requiereMfa) {
-        setDesafioId(resultado.desafioId);
-        setMensaje2fa(resultado.mensaje);
+        setChallengeToken(resultado.challengeToken);
         setPaso2fa(true);
+        setError(null);
+
+        // Disparar automáticamente la solicitud de envío del código OTP a la bandeja de entrada
+        try {
+          const destino = await solicitarEnvioOtpG7(resultado.challengeToken, 'EMAIL');
+          setMensaje2fa(`Hemos enviado un código de 6 dígitos a ${destino}.`);
+        } catch {
+          setMensaje2fa('Ingresa el código de 6 dígitos de tu segundo factor.');
+        }
       } else {
         procesarTokenYRedirigir(resultado.accessToken);
       }
@@ -88,12 +102,27 @@ export function IngresarPage() {
     setError(null);
 
     try {
-      const tokenFinal = await verificarOtpG7(desafioId, codigoOtp);
+      const tokenFinal = await verificarOtpG7(challengeToken, codigoOtp);
       procesarTokenYRedirigir(tokenFinal);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Código de verificación inválido o expirado.');
     } finally {
       setCargando(false);
+    }
+  }
+
+  async function manejarReenviarOtp() {
+    if (!challengeToken) return;
+    setReenviando(true);
+    setInfoReenvio(null);
+    setError(null);
+    try {
+      const destino = await solicitarEnvioOtpG7(challengeToken, 'EMAIL');
+      setInfoReenvio(`Nuevo código solicitado. Revisa ${destino}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo reenviar el código.');
+    } finally {
+      setReenviando(false);
     }
   }
 
@@ -156,6 +185,12 @@ export function IngresarPage() {
                 </Alert>
               )}
 
+              {infoReenvio && (
+                <Alert color="blue" title="Código reenviado" w="100%">
+                  {infoReenvio}
+                </Alert>
+              )}
+
               <PinInput
                 length={6}
                 size="md"
@@ -170,19 +205,33 @@ export function IngresarPage() {
                 Confirmar código
               </Button>
 
-              <Button
-                variant="subtle"
-                size="xs"
-                color="gray"
-                onClick={() => {
-                  setPaso2fa(false);
-                  setCodigoOtp('');
-                  setError(null);
-                }}
-                disabled={cargando}
-              >
-                ← Volver al login
-              </Button>
+              <Group justify="space-between" w="100%" mt="xs">
+                <Button
+                  variant="subtle"
+                  size="xs"
+                  color="gray"
+                  onClick={() => {
+                    setPaso2fa(false);
+                    setCodigoOtp('');
+                    setError(null);
+                    setInfoReenvio(null);
+                  }}
+                  disabled={cargando || reenviando}
+                >
+                  ← Volver al login
+                </Button>
+
+                <Button
+                  variant="subtle"
+                  size="xs"
+                  color="blue"
+                  onClick={manejarReenviarOtp}
+                  loading={reenviando}
+                  disabled={cargando}
+                >
+                  Reenviar código
+                </Button>
+              </Group>
             </Stack>
           </form>
         )}
