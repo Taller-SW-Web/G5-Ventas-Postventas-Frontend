@@ -1,12 +1,18 @@
-# CI/CD del frontend (Hito 4): Build → Compile → Test → Deploy a Vercel
-# - En cada PR hacia main: instala, compila (tsc) y construye (vite). No despliega.
-# - En cada push/merge a main: lo mismo y, si pasa, despliega a producción en Vercel.
-# Requiere el secret VERCEL_TOKEN en el repo (Settings → Secrets and variables → Actions).
-# - Ejecución manual (Actions → CI/CD Frontend → Run workflow), con la casilla simular_error:
-#   · desmarcada: instala, compila, prueba y, desde main, despliega igual que un push.
-#   · marcada: instala, compila y prueba igual (el código no se toca), luego un paso hace exit 1 a propósito;
-#     el build queda en rojo y el deploy NO se ejecuta (depende de needs: build). Sirve para demostrar
-#     que un fallo nunca llega a producción.
+# CI/CD del frontend (Hito 4)
+#
+#   Tipos y compilación (tsc) ─┐
+#   Pruebas unitarias (vitest) ├─> Build (vite) ─> CI frontend verde ─> Deploy a Vercel ─> Verificar producción ─> Versionado
+#   Calcular versión ──────────┘
+#
+# - PR hacia main: tipos, pruebas, build y versión calculada (se comenta en el PR). No despliega ni crea versión.
+# - Push/merge a main: todo lo anterior y, si pasa, despliega en Vercel, verifica producción y publica la versión.
+# - Versionado semántico automático (Conventional Commits, ver .github/scripts/calcular-version.sh):
+#   feat -> minor, fix/perf/refactor -> patch, "!" o BREAKING CHANGE -> major, docs/ci/chore -> sin versión.
+#   La versión es el ÚLTIMO paso: si algo falla (tipos, pruebas, build, simular_error, deploy o verificación), no se crea.
+# - Ejecución manual (Actions > CI/CD Frontend > Run workflow), con la casilla simular_error:
+#   · desmarcada: igual que un push (desde main despliega y versiona).
+#   · marcada: todo se prueba igual, pero la barrera "CI frontend verde" falla a propósito; no hay deploy ni versión.
+# Requiere el secret VERCEL_TOKEN (Settings > Secrets and variables > Actions).
 
 name: CI/CD Frontend
 
@@ -22,30 +28,129 @@ on:
         type: boolean
         default: false
 
+# Dos ejecuciones seguidas de main esperan su turno (no se pisan al crear versiones)
+concurrency:
+  group: ci-frontend-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
 env:
   VERCEL_ORG_ID: team_0djkkuY2CsvooLgPdDR43lyy
   VERCEL_PROJECT_ID: prj_hEy5mFw2NnSW3ZaGhIsNRLokwUbS
+  URL_PRODUCCION: https://g5-ventas-postventas-frontend.vercel.app
 
 jobs:
-  build:
-    name: Build, Compile y Test
+  tipos:
+    name: Tipos y compilación (tsc)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-
       - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
-
       - name: Instalar dependencias
         run: npm ci
+      - name: Verificar tipos (tsc -b)
+        run: npx tsc -b
 
-      - name: Compilar y construir (tsc -b && vite build)
-        run: npm run build
+  pruebas:
+    name: Pruebas unitarias (vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Ejecutar pruebas
+        run: npm test
 
-      - name: Tests
-        run: npm test --if-present
+  calcular-version:
+    name: Calcular versión
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    outputs:
+      anterior: ${{ steps.version.outputs.anterior }}
+      siguiente: ${{ steps.version.outputs.siguiente }}
+      tipo: ${{ steps.version.outputs.tipo }}
+      publicar: ${{ steps.version.outputs.publicar }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Calcular siguiente versión (SemVer)
+        id: version
+        run: bash .github/scripts/calcular-version.sh
+
+      - name: Comentar la versión en el PR
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          ANTERIOR: ${{ steps.version.outputs.anterior }}
+          SIGUIENTE: ${{ steps.version.outputs.siguiente }}
+          TIPO: ${{ steps.version.outputs.tipo }}
+          PUBLICAR: ${{ steps.version.outputs.publicar }}
+        run: |
+          if [ "$PUBLICAR" = "true" ]; then
+            cuerpo="**Versión del frontend:** \`$ANTERIOR\` → \`$SIGUIENTE\` (cambio **$TIPO**). Se publicará al fusionar en \`main\` si el pipeline termina en verde."
+          else
+            cuerpo="**Versión del frontend:** se mantiene en \`$ANTERIOR\` (solo hay cambios de docs/ci/chore/test)."
+          fi
+          gh pr comment "$PR" --edit-last --body "$cuerpo" 2>/dev/null || gh pr comment "$PR" --body "$cuerpo"
+
+  build:
+    name: Build (vite)
+    needs: [tipos, pruebas]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Construir (vite build)
+        run: npx vite build
+      - name: Guardar el build (dist)
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+
+  ci-verde:
+    name: CI frontend verde
+    needs: [tipos, pruebas, build, calcular-version]
+    # always(): este check SIEMPRE se reporta (rojo si algo falló). Un check "saltado" contaría como aprobado
+    # en la protección de rama, por eso no se deja saltar.
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verificar que todos los jobs pasaron
+        env:
+          TIPOS: ${{ needs.tipos.result }}
+          PRUEBAS: ${{ needs.pruebas.result }}
+          BUILD: ${{ needs.build.result }}
+          VERSION: ${{ needs.calcular-version.result }}
+        run: |
+          echo "Tipos: $TIPOS | Pruebas: $PRUEBAS | Build: $BUILD | Versión: $VERSION"
+          for r in "$TIPOS" "$PRUEBAS" "$BUILD" "$VERSION"; do
+            if [ "$r" != "success" ]; then
+              echo "::error title=CI en rojo::Al menos un job falló; no se despliega ni se crea versión."
+              exit 1
+            fi
+          done
 
       # Solo en ejecución manual con simular_error marcado; en push y PR inputs llega vacío y se salta
       - name: Fallo controlado (simular_error)
@@ -56,8 +161,7 @@ jobs:
 
   deploy:
     name: Deploy a Vercel (producción)
-    needs: build
-    # needs: build es la barrera: si el build falla (también el fallo simulado), no se despliega
+    needs: ci-verde
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
@@ -68,7 +172,7 @@ jobs:
           node-version: 22
 
       - name: Instalar Vercel CLI
-        run: npm install --global vercel@latest
+        run: npm install --global vercel@65
 
       - name: Traer configuración y variables de entorno de Vercel
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
@@ -78,3 +182,45 @@ jobs:
 
       - name: Deploy
         run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+  verificar-produccion:
+    name: Verificar producción
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: La página principal responde 200 y sirve la app
+        run: |
+          for intento in $(seq 1 10); do
+            codigo="$(curl -s -o pagina.html -w '%{http_code}' --max-time 20 "$URL_PRODUCCION/")"
+            if [ "$codigo" = "200" ] && grep -q 'id="root"' pagina.html; then
+              echo "$URL_PRODUCCION responde 200 (intento $intento)"; exit 0
+            fi
+            echo "Intento $intento: código $codigo, reintentando en 10 s..."; sleep 10
+          done
+          echo "::error::$URL_PRODUCCION no respondió correctamente"; exit 1
+
+      # vercel.json reescribe todas las rutas a index.html: una ruta interna también debe responder 200
+      - name: Una ruta interna del portal responde 200
+        run: |
+          codigo="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$URL_PRODUCCION/admin/dashboard")"
+          echo "GET /admin/dashboard -> $codigo"
+          [ "$codigo" = "200" ] || { echo "::error::Se esperaba 200 y se obtuvo $codigo"; exit 1; }
+
+  versionado:
+    name: Versionado (tag + Release)
+    needs: [calcular-version, verificar-produccion]
+    if: needs.calcular-version.outputs.publicar == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Crear tag y GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.calcular-version.outputs.siguiente }}
+          TIPO: ${{ needs.calcular-version.outputs.tipo }}
+        run: |
+          gh release create "$VERSION" --target "$GITHUB_SHA" --title "Frontend $VERSION" --generate-notes
+          echo "### Versión publicada: \`$VERSION\` ($TIPO)" >> "$GITHUB_STEP_SUMMARY"
