@@ -2,6 +2,11 @@
 # - En cada PR hacia main: instala, compila (tsc) y construye (vite). No despliega.
 # - En cada push/merge a main: lo mismo y, si pasa, despliega a producción en Vercel.
 # Requiere el secret VERCEL_TOKEN en el repo (Settings → Secrets and variables → Actions).
+# - Ejecución manual (Actions → CI/CD Frontend → Run workflow), con la casilla simular_error:
+#   · desmarcada: instala, compila, prueba y, desde main, despliega igual que un push.
+#   · marcada: instala, compila y prueba igual (el código no se toca), luego un paso hace exit 1 a propósito;
+#     el build queda en rojo y el deploy NO se ejecuta (depende de needs: build). Sirve para demostrar
+#     que un fallo nunca llega a producción.
 
 name: CI/CD Frontend
 
@@ -10,6 +15,12 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      simular_error:
+        description: "Genera un fallo controlado para la demostración académica."
+        type: boolean
+        default: false
 
 env:
   VERCEL_ORG_ID: team_0djkkuY2CsvooLgPdDR43lyy
@@ -36,10 +47,18 @@ jobs:
       - name: Tests
         run: npm test --if-present
 
+      # Solo en ejecución manual con simular_error marcado; en push y PR inputs llega vacío y se salta
+      - name: Fallo controlado (simular_error)
+        if: ${{ inputs.simular_error == true }}
+        run: |
+          echo "::error title=Fallo simulado::Error forzado a propósito para la demostración; el código y las pruebas no se modificaron."
+          exit 1
+
   deploy:
     name: Deploy a Vercel (producción)
     needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # needs: build es la barrera: si el build falla (también el fallo simulado), no se despliega
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
