@@ -1,0 +1,10 @@
+# Configuración de CodeQL (SAST) del frontend.
+name: "CodeQL frontend Ventas y Postventa"
+
+# Solo el código de la aplicación (src/). Los tests y el build no se analizan.
+paths:
+  - src
+paths-ignore:
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "src/test/**"
