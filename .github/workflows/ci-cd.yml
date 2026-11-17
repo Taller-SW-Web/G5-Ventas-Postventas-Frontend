@@ -1,8 +1,19 @@
-# CI/CD del frontend (Hito 4)
+# CI/CD del frontend (Hito 4) + revisión de seguridad (Hito 5)
 #
 #   Tipos y compilación (tsc) ─┐
-#   Pruebas unitarias (vitest) ├─> Build (vite) ─> CI frontend verde ─> Deploy a Vercel ─> Verificar producción ─> Versionado
-#   Calcular versión ──────────┘
+#   Pruebas unitarias (vitest) ┴─> Build (vite) ─┐
+#   Seguridad · Dependencias (npm audit) ────────┤
+#   Seguridad · Secretos (gitleaks) ─────────────┼─> CI frontend verde ─> Deploy a Vercel ─> Verificar producción ─> Versionado
+#   Seguridad · SAST (CodeQL) ───────────────────┤
+#   Calcular versión ────────────────────────────┘
+#
+# Revisión de seguridad (DevSecOps). Cualquiera de estos hallazgos pone el pipeline en rojo, así que no hay deploy ni versión:
+#   - Dependencias: npm audit bloquea vulnerabilidades HIGH o CRITICAL en las librerías que llegan al navegador
+#     (dependencies). Las de desarrollo (devDependencies) se reportan sin bloquear: no se publican.
+#   - Secretos: gitleaks revisa TODO el historial de git (tokens de Vercel/G7, contraseñas, llaves).
+#   - SAST: CodeQL analiza el código TypeScript/React (XSS, redirecciones abiertas, etc.). Bloquea severidad alta o
+#     crítica (security-severity >= 7.0). Los resultados se publican en Security > Code scanning.
+#   - Producción: además de responder 200, se verifican las cabeceras de seguridad que define vercel.json.
 #
 # - PR hacia main: tipos, pruebas, build y versión calculada (se comenta en el PR). No despliega ni crea versión.
 # - Push/merge a main: todo lo anterior y, si pasa, despliega en Vercel, verifica producción y publica la versión.
@@ -129,9 +140,117 @@ jobs:
           path: dist/
           retention-days: 7
 
+  seguridad-dependencias:
+    name: Seguridad · Dependencias (npm audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Reporte completo (incluye devDependencies, informativo)
+        run: |
+          npm audit --json > npm-audit.json || true
+          { echo "### npm audit (todas las dependencias)"; echo '```'; npm audit || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Bloquear HIGH o CRITICAL en dependencias de producción
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Guardar reporte
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seguridad-dependencias
+          path: npm-audit.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  seguridad-secretos:
+    name: Seguridad · Secretos (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # todo el historial: un secreto borrado en un commit posterior igual queda expuesto
+
+      - name: Instalar gitleaks
+        env:
+          VERSION: 8.21.2
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C "$RUNNER_TEMP" gitleaks
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/gitleaks" version
+
+      - name: Buscar secretos en el historial
+        run: gitleaks git . --redact --verbose --report-format json --report-path gitleaks.json
+
+      - name: Guardar reporte
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seguridad-secretos
+          path: gitleaks.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  seguridad-sast:
+    name: Seguridad · SAST (CodeQL)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # publicar resultados en Security > Code scanning
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Inicializar CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+          build-mode: none
+          config-file: ./.github/codeql/codeql-config.yml
+
+      - name: Analizar
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:javascript-typescript
+          output: codeql-resultados
+
+      - name: Bloquear hallazgos de severidad alta o crítica
+        run: |
+          sarif="$(ls codeql-resultados/*.sarif | head -1)"
+          jq -r '
+            .runs[] as $run
+            | ($run.tool.driver.rules // []) as $reglas
+            | $run.results[]
+            | . as $r
+            | ([$reglas[] | select(.id == $r.ruleId)][0].properties["security-severity"] // "0" | tonumber) as $sev
+            | select($sev >= 7.0)
+            | "\($sev)\t\($r.ruleId)\t\($r.locations[0].physicalLocation.artifactLocation.uri):\($r.locations[0].physicalLocation.region.startLine)"
+          ' "$sarif" > altos.tsv
+          total="$(jq '[.runs[].results[]] | length' "$sarif")"
+          altos="$(wc -l < altos.tsv)"
+          { echo "### CodeQL · TypeScript/React"; echo "Hallazgos totales: $total · Altos/críticos (bloquean): $altos"; } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$altos" -gt 0 ]; then
+            { echo '```'; cat altos.tsv; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=SAST::CodeQL encontró $altos hallazgo(s) de severidad alta o crítica (ver resumen y Security > Code scanning)."
+            exit 1
+          fi
+
+      - name: Guardar reporte SARIF
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seguridad-sast
+          path: codeql-resultados/
+          if-no-files-found: ignore
+          retention-days: 14
+
   ci-verde:
     name: CI frontend verde
-    needs: [tipos, pruebas, build, calcular-version]
+    needs: [tipos, pruebas, build, calcular-version, seguridad-dependencias, seguridad-secretos, seguridad-sast]
     # always(): este check SIEMPRE se reporta (rojo si algo falló). Un check "saltado" contaría como aprobado
     # en la protección de rama, por eso no se deja saltar.
     if: always()
@@ -143,11 +262,15 @@ jobs:
           PRUEBAS: ${{ needs.pruebas.result }}
           BUILD: ${{ needs.build.result }}
           VERSION: ${{ needs.calcular-version.result }}
+          DEPENDENCIAS: ${{ needs.seguridad-dependencias.result }}
+          SECRETOS: ${{ needs.seguridad-secretos.result }}
+          SAST: ${{ needs.seguridad-sast.result }}
         run: |
           echo "Tipos: $TIPOS | Pruebas: $PRUEBAS | Build: $BUILD | Versión: $VERSION"
-          for r in "$TIPOS" "$PRUEBAS" "$BUILD" "$VERSION"; do
+          echo "Seguridad -> Dependencias: $DEPENDENCIAS | Secretos: $SECRETOS | SAST: $SAST"
+          for r in "$TIPOS" "$PRUEBAS" "$BUILD" "$VERSION" "$DEPENDENCIAS" "$SECRETOS" "$SAST"; do
             if [ "$r" != "success" ]; then
-              echo "::error title=CI en rojo::Al menos un job falló; no se despliega ni se crea versión."
+              echo "::error title=CI en rojo::Al menos un job (tipos, pruebas, build o revisión de seguridad) falló; no se despliega ni se crea versión."
               exit 1
             fi
           done
@@ -205,6 +328,17 @@ jobs:
           codigo="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$URL_PRODUCCION/admin/dashboard")"
           echo "GET /admin/dashboard -> $codigo"
           [ "$codigo" = "200" ] || { echo "::error::Se esperaba 200 y se obtuvo $codigo"; exit 1; }
+
+      # Cabeceras definidas en vercel.json (clickjacking, MIME sniffing, fuga de referer, permisos del navegador)
+      - name: Cabeceras de seguridad presentes
+        run: |
+          curl -sSI --max-time 20 "$URL_PRODUCCION/" | tr -d '\r' > cabeceras.txt
+          falta=0
+          for c in "strict-transport-security" "x-content-type-options: nosniff" "x-frame-options: DENY" \
+                   "referrer-policy: strict-origin-when-cross-origin" "permissions-policy"; do
+            if grep -qi "^$c" cabeceras.txt; then echo "OK  $c"; else echo "::error::Falta la cabecera $c"; falta=1; fi
+          done
+          exit $falta
 
   versionado:
     name: Versionado (tag + Release)
