@@ -1,5 +1,5 @@
 /* Accesos de la barra lateral: texto claro sobre ink; el activo, tarjeta clara con acento naranja (Figma).
-   El activo lo marca React Router con aria-current="page". */
+   El activo lo decide LayoutGestor (prop active → data-active), así Anulaciones mantiene destacado Pedidos. */
 .acceso {
   --nl-color: var(--mantine-color-cloud-2);
   --nl-hover: var(--mantine-color-ink-7);
@@ -8,7 +8,21 @@
   padding-block: 12px;
 }
 
-.acceso.acceso[aria-current='page'] {
+/* Menú compacto: solo el icono, centrado */
+.acceso[data-compacto] {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.acceso[data-compacto] :global(.mantine-NavLink-section) {
+  margin-inline-end: 0;
+}
+
+.acceso[data-compacto] :global(.mantine-NavLink-body) {
+  display: none;
+}
+
+.acceso.acceso[data-active] {
   --nl-bg: var(--mantine-color-cloud-0);
   --nl-color: var(--mantine-color-ink-9);
   --nl-hover: var(--mantine-color-cloud-0);
@@ -16,4 +30,14 @@
   color: var(--mantine-color-ink-9);
   font-weight: 600;
   box-shadow: inset 4px 0 0 var(--mantine-color-orange-7);
+}
+
+.alternar {
+  background-color: var(--mantine-color-ink-8);
+  color: var(--mantine-color-cloud-2);
+}
+
+.alternar:hover {
+  background-color: var(--mantine-color-ink-7);
+  color: var(--mantine-color-cloud-0);
 }

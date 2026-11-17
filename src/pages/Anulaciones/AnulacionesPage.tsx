@@ -1,5 +1,10 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+// Mockup 04 — Anulaciones (F2). Responsable: Luis Arroyo
+// Bandeja 1.8 con filtros, orden y paginación en el servidor; decisiones con 1.9 y nuevas solicitudes con 1.7.
+// Todo sale del servidor: si 1.8 falla se muestra el error con "Reintentar" (sin casos de ejemplo), y una
+// decisión solo se anuncia cuando 1.9 respondió. El panel lateral muestra siempre la fila de la última consulta.
+import { useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { IconSearch, IconX } from '@tabler/icons-react';
 import {
   Title,
   Text,
@@ -21,6 +26,7 @@ import {
   Modal,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { BotonVolver } from '@/components/BotonVolver';
 import { EstadoBadge } from '@/components/EstadoBadge';
 import { ModalConfirmacion } from '@/components/ModalConfirmacion';
 import { EstadoCarga } from '@/components/EstadoCarga';
@@ -33,9 +39,68 @@ import {
 import { ApiError } from '@/services/api';
 import { detallesDePedidos } from '@/services/pedidos';
 import { sesionActual } from '@/services/auth';
-import { CASOS_MOCKUP_04, type ItemBandejaAnulacion } from './datosMockup04';
+import { ETIQUETA_CANAL, ETIQUETA_ESTADO, formatoFechaHora } from '@/pages/Pedidos/formato';
+import {
+  aItemBandeja,
+  estadoDeFiltro,
+  etiquetaMotivo,
+  type Autorizacion,
+  type EstadoSolicitud,
+  type ItemBandejaAnulacion,
+} from './bandejaAnulaciones';
 import type { Canal } from '@/types/comun';
-import type { EstadoAnulacion, ListadoAnulacionesPendientes, MotivoAnulacion } from '@/types/pedido';
+import type { ListadoAnulacionesPendientes, MotivoAnulacion } from '@/types/pedido';
+
+const CANALES: Canal[] = ['MARKETPLACE', 'CHATBOT', 'RETAIL'];
+
+/** Colores de las capturas del Mockup 04 (siempre acompañados del texto). */
+const COLOR_AUTORIZACION: Record<Autorizacion, string> = {
+  Pendiente: 'yellow',
+  Aprobada: 'volt',
+  Rechazada: 'red',
+};
+
+const COLOR_SOLICITUD: Record<EstadoSolicitud, string> = {
+  PENDIENTE: 'yellow',
+  EJECUTADA: 'signal',
+  RECHAZADA: 'red',
+};
+
+/** Badge suave de autorización o solicitud; el volt claro necesita su tono oscuro para leerse. */
+function Pastilla({ color, mayusculas = true, children }: { color: string; mayusculas?: boolean; children: ReactNode }) {
+  return (
+    <Badge
+      size="sm"
+      variant="light"
+      color={color}
+      c={color === 'volt' ? 'volt.9' : undefined}
+      tt={mayusculas ? undefined : 'none'}
+      miw="max-content"
+    >
+      {children}
+    </Badge>
+  );
+}
+
+/** "Mostrando 1–5 de 14 solicitudes" (Mockup 04, 5.7). pagina empieza en 1. */
+function resumenIntervalo(pagina: number, tamano: number, enPagina: number, total: number): string {
+  if (enPagina === 0) return `0 de ${total} solicitudes`;
+  const desde = (pagina - 1) * tamano + 1;
+  return `Mostrando ${desde}–${desde + enPagina - 1} de ${total} solicitudes`;
+}
+
+function Fila({ etiqueta, children }: { etiqueta: string; children: ReactNode }) {
+  return (
+    <Group justify="space-between" wrap="nowrap" gap="sm" align="flex-start">
+      <Text size="sm" c="dimmed">
+        {etiqueta}
+      </Text>
+      <Text component="div" size="sm" fw={500} ta="right">
+        {children}
+      </Text>
+    </Group>
+  );
+}
 
 const OPCIONES_MOTIVO_GESTOR: { value: MotivoAnulacion; label: string }[] = [
   { value: 'SOLICITUD_CLIENTE', label: 'Solicitud del cliente (arrepentimiento / cambio de opinión)' },
@@ -45,33 +110,34 @@ const OPCIONES_MOTIVO_GESTOR: { value: MotivoAnulacion; label: string }[] = [
   { value: 'DUPLICADO', label: 'Pedido duplicado' },
 ];
 
-function parsearFecha(f?: string): number {
-  if (!f) return 0;
-  if (f.includes('/')) {
-    const [fechaParte, horaParte = '00:00'] = f.split(' ');
-    const partesFecha = fechaParte.split('/');
-    if (partesFecha.length === 3) {
-      const d = parseInt(partesFecha[0], 10);
-      const m = parseInt(partesFecha[1], 10);
-      const y = parseInt(partesFecha[2], 10);
-      const [hh = '0', mm = '0'] = horaParte.split(':');
-      return new Date(y, m - 1, d, parseInt(hh, 10), parseInt(mm, 10)).getTime();
-    }
-  }
-  const timestamp = new Date(f).getTime();
-  return isNaN(timestamp) ? 0 : timestamp;
-}
+const ELEMENTOS_POR_PAGINA = 5;
+
+const mensajeError = (e: unknown, porDefecto: string) => (e instanceof ApiError ? e.message : porDefecto);
 
 export function AnulacionesPage() {
-  // Query param ?pedidoId= desde DetallePedido o navegación externa
+  // ?pedidoId= (desde el detalle del pedido) abre "Iniciar anulación" para ese pedido.
+  // ?buscar=PED-...&solicitud=ANUL-... (desde un reembolso, Mockup 08 9.6) busca el pedido y abre esa solicitud.
+  const navegar = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const pedidoIdParam = searchParams.get('pedidoId');
+  const buscarParam = searchParams.get('buscar');
+  const solicitudParam = searchParams.get('solicitud');
 
-  // Estado de filtros
-  const [busqueda, setBusqueda] = useState(pedidoIdParam || '');
+  // Filtros: los controles editan un borrador y "Aplicar filtros" (o Enter en Buscar) lo aplica (Mockup 04, 5.4)
+  const busquedaInicial = pedidoIdParam || buscarParam || '';
+  const [busqueda, setBusqueda] = useState(busquedaInicial);
+  const [estadoBorrador, setEstadoBorrador] = useState<string | null>('Todos');
+  const [canalBorrador, setCanalBorrador] = useState<string | null>('Todos');
+  const [busquedaAplicada, setBusquedaAplicada] = useState(busquedaInicial);
   const [filtroEstado, setFiltroEstado] = useState<string | null>('Todos');
   const [filtroCanal, setFiltroCanal] = useState<string | null>('Todos');
   const [orden, setOrden] = useState<string | null>('recientes');
+
+  const aplicarFiltros = () => {
+    setBusquedaAplicada(busqueda);
+    setFiltroEstado(estadoBorrador);
+    setFiltroCanal(canalBorrador);
+  };
 
   // Modal Iniciar Anulación (Endpoint 1.7)
   const [modalSolicitarAbierto, setModalSolicitarAbierto] = useState(false);
@@ -83,6 +149,7 @@ export function AnulacionesPage() {
   useEffect(() => {
     if (pedidoIdParam) {
       setBusqueda(pedidoIdParam);
+      setBusquedaAplicada(pedidoIdParam);
       setPedidoIdSolicitud(pedidoIdParam);
       setModalSolicitarAbierto(true);
     }
@@ -99,106 +166,49 @@ export function AnulacionesPage() {
       setSearchParams(nuevosParams, { replace: true });
     }
     setBusqueda('');
+    setBusquedaAplicada('');
   };
-
-  // Debounce para búsqueda textual (350 ms)
-  const [busquedaDebounced, setBusquedaDebounced] = useState(busqueda);
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setBusquedaDebounced(busqueda);
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [busqueda]);
 
   // Paginación (base 1 para la UI, base 0 para el backend)
   const [pagina, setPagina] = useState(1);
-  const elementosPorPagina = 5;
 
-  // Resetear a página 1 cuando cambian filtros, orden o búsqueda
+  // Solicitud seleccionada: se guarda el id y la fila sale siempre de la última respuesta de 1.8
+  const [idSeleccionado, setIdSeleccionado] = useState<string | null>(solicitudParam);
+
+  // Resetear a página 1 cuando cambian filtros, orden o búsqueda (no al montar: conserva ?solicitud=)
+  // (se compara con los filtros anteriores: en StrictMode el efecto corre dos veces al montar)
+  const filtrosPrevios = useRef(JSON.stringify([busquedaAplicada, filtroEstado, filtroCanal, orden]));
   useEffect(() => {
+    const actuales = JSON.stringify([busquedaAplicada, filtroEstado, filtroCanal, orden]);
+    if (actuales === filtrosPrevios.current) return;
+    filtrosPrevios.current = actuales;
     setPagina(1);
-    setCasoSeleccionado(null);
-  }, [busquedaDebounced, filtroEstado, filtroCanal, orden]);
-
-  // Lista local para visualización / fallback offline
-  const [casosLocales, setCasosLocales] = useState<ItemBandejaAnulacion[]>(CASOS_MOCKUP_04);
-
-  // Caso actualmente seleccionado para revisión en el panel lateral
-  const [casoSeleccionado, setCasoSeleccionado] = useState<ItemBandejaAnulacion | null>(null);
+    setIdSeleccionado(null);
+  }, [busquedaAplicada, filtroEstado, filtroCanal, orden]);
 
   // Modales de confirmación
   const [modalAprobarAbierto, setModalAprobarAbierto] = useState(false);
   const [modalRechazarAbierto, setModalRechazarAbierto] = useState(false);
   const [comentarioRechazo, setComentarioRechazo] = useState('');
-  const [comentarioAprobacion, setComentarioAprobacion] = useState('Motivo validado con el cliente');
+  const [comentarioAprobacion, setComentarioAprobacion] = useState('');
   const [procesandoAccion, setProcesandoAccion] = useState(false);
 
-  // Helper para mapear el estado de la anulación al formato visual de la bandeja
-  const mapearEstadoAnulacion = (estado?: string): { autorizacion: 'Pendiente' | 'No requerida' | 'Aprobada' | 'Rechazada'; solicitud: 'PENDIENTE' | 'APROBADA' | 'RECHAZADA' | 'EJECUTADA' } => {
-    switch (estado) {
-      case 'EJECUTADA':
-        return { autorizacion: 'Aprobada', solicitud: 'APROBADA' };
-      case 'RECHAZADA':
-        return { autorizacion: 'Rechazada', solicitud: 'RECHAZADA' };
-      case 'PENDIENTE_AUTORIZACION':
-      default:
-        return { autorizacion: 'Pendiente', solicitud: 'PENDIENTE' };
-    }
-  };
+  const estadoBackend = estadoDeFiltro(filtroEstado);
+  const canalBackend: Canal | undefined =
+    !filtroCanal || filtroCanal === 'Todos' ? undefined : (filtroCanal as Canal);
 
-  const mapearEfectosAnulacion = (estado?: string) => {
-    switch (estado) {
-      case 'EJECUTADA':
-        return {
-          estadoPedido: 'ANULADO',
-          stock: 'Reintegrar inventario',
-          despacho: 'Cancelar despacho si aplica',
-          reembolso: 'Originar reembolso en F4',
-        };
-      case 'RECHAZADA':
-        return {
-          estadoPedido: 'EN_PREPARACION (sin cambios)',
-          stock: 'Sin cambios',
-          despacho: 'Continúa despacho',
-          reembolso: 'No aplica',
-        };
-      case 'PENDIENTE_AUTORIZACION':
-      default:
-        return {
-          estadoPedido: 'Pendiente de decisión',
-          stock: 'Reintegrar si se aprueba',
-          despacho: 'Cancelar si se aprueba',
-          reembolso: 'Originar F4 si se aprueba',
-        };
-    }
-  };
-
-  // Conversión de filtros visuales a enums de backend
-  const estadoBackend: EstadoAnulacion | undefined = useMemo(() => {
-    if (!filtroEstado || filtroEstado === 'Todos') return undefined;
-    if (filtroEstado === 'Pendiente') return 'PENDIENTE_AUTORIZACION';
-    if (filtroEstado === 'Aprobada' || filtroEstado === 'Ejecutada') return 'EJECUTADA';
-    if (filtroEstado === 'Rechazada') return 'RECHAZADA';
-    return undefined;
-  }, [filtroEstado]);
-
-  const canalBackend: Canal | undefined = useMemo(() => {
-    if (!filtroCanal || filtroCanal === 'Todos') return undefined;
-    return filtroCanal as Canal;
-  }, [filtroCanal]);
-
-  // Consulta al backend con Server-Side Filtering, Sorting y Pagination delegados
+  // Consulta al backend con filtros, orden y paginación en el servidor (1.8)
   const consultaBackend = useCallback(async (): Promise<ListadoAnulacionesPendientes> => {
     const listado = await listarAnulaciones({
       estado: estadoBackend,
       canal: canalBackend,
-      busqueda: busquedaDebounced.trim() || undefined,
+      busqueda: busquedaAplicada.trim() || undefined,
       page: pagina - 1,
-      size: elementosPorPagina,
+      size: ELEMENTOS_POR_PAGINA,
       sort: orden === 'antiguos' ? 'fecha,asc' : 'fecha,desc',
     });
 
-    // Si algún item vino sin datos enriquecidos, se completa con el detalle de pedidos
+    // Si algún item vino sin datos del pedido, se completa con el detalle de M1 (los que fallen quedan en "—")
     const faltanDetalles = listado.contenido.some((a) => !a.nombreCliente || !a.canal);
     if (faltanDetalles) {
       const pedidos = await detallesDePedidos(listado.contenido.map((a) => a.pedidoId));
@@ -212,211 +222,72 @@ export function AnulacionesPage() {
     }
 
     return listado;
-  }, [estadoBackend, canalBackend, busquedaDebounced, pagina, orden, elementosPorPagina]);
+  }, [estadoBackend, canalBackend, busquedaAplicada, pagina, orden]);
 
-  const { datos: datosBackend, cargando, error, recargar } = useConsulta(consultaBackend, [consultaBackend]);
+  const { datos, cargando, error, recargar } = useConsulta(consultaBackend, [consultaBackend]);
 
-  const usandoDatosEnVivo = Boolean(datosBackend && datosBackend.contenido !== undefined);
-
-  // Mapeo de items para la vista
-  const casosMostrar: ItemBandejaAnulacion[] = useMemo(() => {
-    if (usandoDatosEnVivo && datosBackend?.contenido) {
-      return datosBackend.contenido.map((item) => {
-        const estadoMapeado = mapearEstadoAnulacion(item.estado);
-        const efectosMapeados = mapearEfectosAnulacion(item.estado);
-        return {
-          solicitudAnulacionId: item.solicitudAnulacionId,
-          pedidoId: item.pedidoId,
-          fecha: item.fechaSolicitud,
-          cliente: item.nombreCliente ?? '—',
-          estadoPedido: item.estadoPedido ?? (item.estado === 'EJECUTADA' ? 'ANULADO' : 'EN_PREPARACION'),
-          canal: item.canal ?? 'MARKETPLACE',
-          motivo: item.motivo,
-          autorizacion: estadoMapeado.autorizacion,
-          solicitud: estadoMapeado.solicitud,
-          solicitante: item.nombreCliente ?? 'Cliente',
-          efectos: efectosMapeados,
-        };
-      });
-    }
-
-    // Modo fallback offline (filtrado en memoria solo para demo sin backend)
-    let filtrados = casosLocales;
-    if (busquedaDebounced.trim()) {
-      const q = busquedaDebounced.toLowerCase();
-      filtrados = filtrados.filter((c) => c.pedidoId.toLowerCase().includes(q) || c.cliente.toLowerCase().includes(q));
-    }
-    if (filtroEstado && filtroEstado !== 'Todos') {
-      filtrados = filtrados.filter((c) =>
-        (filtroEstado === 'Pendiente' && c.solicitud === 'PENDIENTE') ||
-        (filtroEstado === 'Aprobada' && c.solicitud === 'APROBADA') ||
-        (filtroEstado === 'Rechazada' && c.solicitud === 'RECHAZADA') ||
-        (filtroEstado === 'Ejecutada' && (c.solicitud === 'EJECUTADA' || c.solicitud === 'APROBADA'))
-      );
-    }
-    if (filtroCanal && filtroCanal !== 'Todos') {
-      filtrados = filtrados.filter((c) => c.canal === filtroCanal);
-    }
-    return [...filtrados].sort((a, b) => {
-      const timeA = parsearFecha(a.fecha);
-      const timeB = parsearFecha(b.fecha);
-      return orden === 'antiguos' ? timeA - timeB : timeB - timeA;
-    });
-  }, [usandoDatosEnVivo, datosBackend, casosLocales, busquedaDebounced, filtroEstado, filtroCanal, orden]);
-
-  // Total de páginas exacto provisto por el backend (COUNT de BD) o calculado en fallback
-  const totalPaginas = Math.max(
-    1,
-    usandoDatosEnVivo
-      ? datosBackend?.totalPaginas || 1
-      : Math.ceil(casosMostrar.length / elementosPorPagina) || 1
-  );
-
-  // En datos en vivo, el backend ya aplicó LIMIT y OFFSET; en fallback, cortamos la página
-  const casosPaginados = useMemo(() => {
-    if (usandoDatosEnVivo) return casosMostrar;
-    const inicio = (pagina - 1) * elementosPorPagina;
-    return casosMostrar.slice(inicio, inicio + elementosPorPagina);
-  }, [usandoDatosEnVivo, casosMostrar, pagina, elementosPorPagina]);
-
-  // Total de solicitudes para el contador (server-side totalElementos o fallback local)
-  const totalSolicitudes = usandoDatosEnVivo
-    ? (datosBackend?.totalElementos ?? 0)
-    : casosMostrar.length;
+  const casosPaginados: ItemBandejaAnulacion[] = (datos?.contenido ?? []).map(aItemBandeja);
+  const casoSeleccionado = casosPaginados.find((c) => c.solicitudAnulacionId === idSeleccionado) ?? null;
+  const totalPaginas = Math.max(1, datos?.totalPaginas ?? 1);
+  const totalSolicitudes = datos?.totalElementos ?? 0;
+  // Sin la última consulta confirmada no se decide nada: la fila podría estar desactualizada
+  const decisionesBloqueadas = cargando || Boolean(error);
 
   // Limpiar filtros
   const handleLimpiarFiltros = () => {
     setBusqueda('');
-    setBusquedaDebounced('');
+    setBusquedaAplicada('');
+    setEstadoBorrador('Todos');
+    setCanalBorrador('Todos');
     setFiltroEstado('Todos');
     setFiltroCanal('Todos');
     setOrden('recientes');
     setPagina(1);
-    setCasoSeleccionado(null);
+    setIdSeleccionado(null);
   };
 
-  // Confirmar Aprobación (1.9 PATCH /api/v1/pedidos/{pedidoId}/anulaciones/{anulacionId})
-  const handleConfirmarAprobacion = async () => {
+  // 1.9 PATCH /api/v1/pedidos/{pedidoId}/anulaciones/{anulacionId}. Éxito o 409: el resultado lo decide el
+  // servidor (en un 409 por despacho ya marcó la solicitud como RECHAZADA), así que se vuelve a consultar.
+  const resolver = async (decision: 'APROBADA' | 'RECHAZADA', comentario: string) => {
     if (!casoSeleccionado) return;
     setProcesandoAccion(true);
-
     try {
-      if (usandoDatosEnVivo) {
-        await resolverAnulacion(casoSeleccionado.pedidoId, casoSeleccionado.solicitudAnulacionId, {
-          decision: 'APROBADA',
-          autorizadorId: sesionActual().usuarioId ?? 'ADMIN_VENTAS',
-          comentario: comentarioAprobacion,
-        });
-        recargar();
-      }
-
-      const actualizado: ItemBandejaAnulacion = {
-        ...casoSeleccionado,
-        autorizacion: 'Aprobada',
-        solicitud: 'APROBADA',
-        estadoPedido: 'ANULADO',
-        efectos: {
-          estadoPedido: 'ANULADO',
-          stock: 'Reintegrar inventario',
-          despacho: 'Cancelar despacho si aplica',
-          reembolso: 'Originar reembolso en F4',
-        },
-      };
-
-      setCasosLocales((prev) =>
-        prev.map((c) => (c.solicitudAnulacionId === actualizado.solicitudAnulacionId ? actualizado : c))
-      );
-      setCasoSeleccionado(actualizado);
-      setModalAprobarAbierto(false);
-
-      notifications.show({
-        title: 'Anulación Aprobada',
-        message: `La solicitud ${actualizado.solicitudAnulacionId} del pedido ${actualizado.pedidoId} ha sido aprobada exitosamente.`,
-        color: 'green',
+      const resp = await resolverAnulacion(casoSeleccionado.pedidoId, casoSeleccionado.solicitudAnulacionId, {
+        decision,
+        autorizadorId: sesionActual().usuarioId ?? 'ADMIN_VENTAS',
+        comentario: comentario.trim(),
       });
+      setModalAprobarAbierto(false);
+      setModalRechazarAbierto(false);
+      setComentarioAprobacion('');
+      setComentarioRechazo('');
+      notifications.show(
+        resp.estadoAnulacion === 'EJECUTADA'
+          ? {
+              title: 'Anulación aprobada',
+              message: `El pedido ${resp.pedidoId} quedó en ${resp.estadoPedido}.`,
+              color: 'green',
+            }
+          : {
+              title: 'Solicitud rechazada',
+              message: `La anulación quedó ${resp.estadoAnulacion}; el pedido ${resp.pedidoId} sigue en ${resp.estadoPedido}.`,
+              color: 'orange',
+            },
+      );
+      recargar();
     } catch (e: unknown) {
       if (e instanceof ApiError && e.status === 409) {
         setModalAprobarAbierto(false);
-        notifications.show({
-          title: 'Solicitud Rechazada por Conflicto (409)',
-          message: e.message || 'El pedido ya no se encuentra en preparación (ha sido despachado). La anulación fue marcada como RECHAZADA.',
-          color: 'orange',
-        });
-        if (casoSeleccionado) {
-          const actualizadoRechazado: ItemBandejaAnulacion = {
-            ...casoSeleccionado,
-            autorizacion: 'Rechazada',
-            solicitud: 'RECHAZADA',
-            efectos: {
-              estadoPedido: 'Pedido sin cambios (DESPACHADO)',
-              stock: 'Sin cambios',
-              despacho: 'Sin cambios',
-              reembolso: 'No aplica',
-            },
-          };
-          setCasoSeleccionado(actualizadoRechazado);
-          setCasosLocales((prev) =>
-            prev.map((c) => (c.solicitudAnulacionId === actualizadoRechazado.solicitudAnulacionId ? actualizadoRechazado : c))
-          );
-        }
+        setModalRechazarAbierto(false);
+        notifications.show({ title: 'No se pudo aplicar la decisión', message: e.message, color: 'orange' });
         recargar();
       } else {
         notifications.show({
-          title: 'Error al aprobar',
-          message: e instanceof ApiError ? e.message : 'No se pudo comunicar la decisión al servidor.',
+          title: decision === 'APROBADA' ? 'Error al aprobar' : 'Error al rechazar',
+          message: mensajeError(e, 'No se pudo comunicar la decisión al servidor.'),
           color: 'red',
         });
       }
-    } finally {
-      setProcesandoAccion(false);
-    }
-  };
-
-  // Confirmar Rechazo (1.9 PATCH /api/v1/pedidos/{pedidoId}/anulaciones/{anulacionId})
-  const handleConfirmarRechazo = async () => {
-    if (!casoSeleccionado) return;
-    setProcesandoAccion(true);
-
-    try {
-      if (usandoDatosEnVivo) {
-        await resolverAnulacion(casoSeleccionado.pedidoId, casoSeleccionado.solicitudAnulacionId, {
-          decision: 'RECHAZADA',
-          autorizadorId: sesionActual().usuarioId ?? 'ADMIN_VENTAS',
-          comentario: comentarioRechazo,
-        });
-        recargar();
-      }
-
-      const actualizado: ItemBandejaAnulacion = {
-        ...casoSeleccionado,
-        autorizacion: 'Rechazada',
-        solicitud: 'RECHAZADA',
-        efectos: {
-          estadoPedido: `${casoSeleccionado.estadoPedido} (sin cambios)`,
-          stock: 'Sin cambios',
-          despacho: 'Sin cambios',
-          reembolso: 'No aplica',
-        },
-      };
-
-      setCasosLocales((prev) =>
-        prev.map((c) => (c.solicitudAnulacionId === actualizado.solicitudAnulacionId ? actualizado : c))
-      );
-      setCasoSeleccionado(actualizado);
-      setModalRechazarAbierto(false);
-      setComentarioRechazo('');
-
-      notifications.show({
-        title: 'Solicitud Rechazada',
-        message: `La solicitud ${actualizado.solicitudAnulacionId} ha sido rechazada. El pedido continúa en su estado actual.`,
-        color: 'red',
-      });
-    } catch (e: unknown) {
-      notifications.show({
-        title: 'Error al rechazar',
-        message: e instanceof ApiError ? e.message : 'No se pudo comunicar el rechazo al servidor.',
-        color: 'red',
-      });
     } finally {
       setProcesandoAccion(false);
     }
@@ -428,62 +299,30 @@ export function AnulacionesPage() {
     setSolicitandoAnulacion(true);
 
     try {
-      if (usandoDatosEnVivo) {
-        const resp = await solicitarAnulacion(pedidoIdSolicitud.trim(), {
-          motivo: motivoSolicitud,
-          comentario: comentarioSolicitud.trim() || undefined,
-        });
+      const resp = await solicitarAnulacion(pedidoIdSolicitud.trim(), {
+        motivo: motivoSolicitud,
+        comentario: comentarioSolicitud.trim() || undefined,
+      });
 
-        if (resp.autorizacionRequerida) {
-          notifications.show({
-            title: 'Solicitud Registrada (202 Accepted)',
-            message: `El pedido ${resp.pedidoId} se encuentra en preparación. Se generó la solicitud ${resp.solicitudAnulacionId} para evaluación del Gestor.`,
-            color: 'blue',
-          });
-        } else {
-          notifications.show({
-            title: 'Anulación Directa Exitosa (200 OK)',
-            message: `El pedido ${resp.pedidoId} fue anulado exitosamente. ${resp.solicitudReembolsoGenerada ? 'Se originó solicitud de reembolso en F4.' : ''}`,
-            color: 'green',
-          });
-        }
-        recargar();
-      } else {
-        // En modo demostración local
-        const nuevoCaso: ItemBandejaAnulacion = {
-          solicitudAnulacionId: `ANUL-${Math.floor(1000 + Math.random() * 9000)}`,
-          pedidoId: pedidoIdSolicitud.trim(),
-          fecha: new Date().toLocaleDateString('es-PE'),
-          cliente: 'Cliente Demostración',
-          estadoPedido: 'EN_PREPARACION',
-          canal: 'MARKETPLACE',
-          motivo: motivoSolicitud,
-          autorizacion: 'Pendiente',
-          solicitud: 'PENDIENTE',
-          solicitante: 'Cliente',
-          efectos: {
-            estadoPedido: 'Pendiente de decisión',
-            stock: 'Reintegrar si se aprueba',
-            despacho: 'Cancelar si se aprueba',
-            reembolso: 'Originar F4 si se aprueba',
-          },
-        };
-        setCasosLocales((prev) => [nuevoCaso, ...prev]);
+      if (resp.autorizacionRequerida) {
         notifications.show({
-          title: 'Solicitud Creada (Modo Demostración)',
-          message: `Se registró la solicitud para el pedido ${pedidoIdSolicitud.trim()} con motivo ${motivoSolicitud}.`,
+          title: 'Solicitud registrada',
+          message: `El pedido ${resp.pedidoId} está en preparación. Se generó la solicitud ${resp.solicitudAnulacionId} para evaluación del Gestor.`,
           color: 'blue',
         });
+      } else {
+        notifications.show({
+          title: 'Pedido anulado',
+          message: `El pedido ${resp.pedidoId} quedó en ${resp.estadoPedido}. ${resp.solicitudReembolsoGenerada ? 'Se originó la solicitud de reembolso en F4.' : ''}`,
+          color: 'green',
+        });
       }
-
       cerrarModalSolicitar();
-
-
-
+      recargar();
     } catch (e: unknown) {
       notifications.show({
         title: 'Error al solicitar anulación',
-        message: e instanceof ApiError ? e.message : 'No se pudo comunicar la solicitud al servidor.',
+        message: mensajeError(e, 'No se pudo comunicar la solicitud al servidor.'),
         color: 'red',
       });
     } finally {
@@ -493,122 +332,104 @@ export function AnulacionesPage() {
 
   return (
     <Stack gap="lg">
-      {/* Encabezado */}
-      <Group justify="space-between" align="center">
-        <div>
-          <Title order={2} c="ink.9">
-            Anulaciones
-          </Title>
-          <Text size="sm" c="dimmed">
-            Bandeja administrativa para evaluar y autorizar solicitudes de cancelación de pedidos (F2 - Mockup 04)
-          </Text>
-        </div>
-        <Button color="orange" onClick={() => setModalSolicitarAbierto(true)}>
+      {/* Encabezado con flecha de regreso (Mockup 04, 4) */}
+      <Group justify="space-between" align="center" wrap="wrap">
+        <Group gap="sm" wrap="nowrap">
+          <BotonVolver a="/admin/pedidos" etiqueta="Volver a pedidos" />
+          <Title order={1}>Anulaciones</Title>
+        </Group>
+        {/* No está en el Figma (allí se llega desde el pedido): permite registrar 1.7 sin abrir antes el detalle */}
+        <Button variant="outline" onClick={() => setModalSolicitarAbierto(true)}>
           Iniciar anulación
         </Button>
       </Group>
 
-      {/* Alerta de conexión */}
-      {Boolean(error) && (
-        <Alert color="orange" title="Modo Demostración / Backend no conectado">
-          No se detectó el backend activo en el puerto configurado. La vista está operando con datos locales del Mockup 04.
-        </Alert>
-      )}
-
-      {/* Barra de Filtros */}
-      <Paper p="md" radius="md" withBorder>
-        <Grid gap="md" align="flex-end">
-          <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
-            <TextInput
-              label="Buscar"
-              placeholder="Ej. PED-2026-1041 o cliente"
-              value={busqueda}
-              onChange={(e) => {
-                setBusqueda(e.currentTarget.value);
-                setPagina(1);
-              }}
-            />
-          </Grid.Col>
-
-          <Grid.Col span={{ base: 12, sm: 6, md: 2 }}>
-            <Select
-              label="Estado de solicitud"
-              allowDeselect={false}
-              value={filtroEstado}
-              onChange={(val) => {
-                setFiltroEstado(val || 'Todos');
-                setPagina(1);
-              }}
-              data={['Todos', 'Pendiente', 'Aprobada', 'Rechazada', 'Ejecutada']}
-            />
-          </Grid.Col>
-
-          <Grid.Col span={{ base: 12, sm: 6, md: 2 }}>
-            <Select
-              label="Canal"
-              allowDeselect={false}
-              value={filtroCanal}
-              onChange={(val) => {
-                setFiltroCanal(val || 'Todos');
-                setPagina(1);
-              }}
-              data={['Todos', 'MARKETPLACE', 'CHATBOT', 'RETAIL']}
-            />
-          </Grid.Col>
-
-          <Grid.Col span={{ base: 12, sm: 6, md: 2 }}>
-            <Select
-              label="Orden"
-              allowDeselect={false}
-              value={orden}
-              onChange={(val) => {
-                setOrden(val || 'recientes');
-                setPagina(1);
-              }}
-              data={[
-                { value: 'recientes', label: 'Más recientes' },
-                { value: 'antiguos', label: 'Más antiguos' },
-              ]}
-            />
-          </Grid.Col>
-
-          <Grid.Col span={{ base: 12, sm: 12, md: 3 }}>
-            <Group justify="flex-end">
-              <Button variant="default" onClick={handleLimpiarFiltros}>
-                Limpiar
-              </Button>
-              <Button color="orange" onClick={() => setPagina(1)}>
-                Aplicar filtros
-              </Button>
-            </Group>
-          </Grid.Col>
-        </Grid>
+      {/* Barra de filtros: se preparan y se aplican con el botón */}
+      <Paper p="md" radius="md" withBorder shadow="xs">
+        <Group align="flex-end" gap="md" wrap="wrap">
+          <TextInput
+            label="Buscar"
+            variant="filled"
+            placeholder="Código de pedido o cliente"
+            leftSection={<IconSearch size={20} aria-hidden />}
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.currentTarget.value)}
+            onKeyDown={(e) => e.key === 'Enter' && aplicarFiltros()}
+            style={{ flex: '2 1 240px' }}
+          />
+          <Select
+            label="Estado"
+            variant="filled"
+            allowDeselect={false}
+            value={estadoBorrador}
+            onChange={(val) => setEstadoBorrador(val || 'Todos')}
+            data={['Todos', 'Pendiente', 'Aprobada', 'Rechazada', 'Ejecutada']}
+            style={{ flex: '1 1 160px' }}
+          />
+          <Select
+            label="Canal"
+            variant="filled"
+            allowDeselect={false}
+            value={canalBorrador}
+            onChange={(val) => setCanalBorrador(val || 'Todos')}
+            data={[{ value: 'Todos', label: 'Todos' }, ...CANALES.map((c) => ({ value: c, label: ETIQUETA_CANAL[c] }))]}
+            style={{ flex: '1 1 160px' }}
+          />
+          <Group gap="sm" ml="auto">
+            <Button onClick={aplicarFiltros}>Aplicar filtros</Button>
+            <Button variant="default" onClick={handleLimpiarFiltros}>
+              Limpiar
+            </Button>
+          </Group>
+        </Group>
       </Paper>
 
       {/* Contenido Principal: Bandeja + Panel Lateral */}
       <Grid gap="md">
         {/* Bandeja de Solicitudes (Tabla) */}
-        <Grid.Col span={casoSeleccionado ? { base: 12, lg: 7 } : 12}>
-          <Paper p="md" radius="md" withBorder>
-            <Group justify="space-between" mb="md">
-              <Title order={4} c="ink.9">
-                Solicitudes de Anulación
-              </Title>
-              <Text size="xs" c="dimmed">
-                Mostrando {casosPaginados.length} de {totalSolicitudes} solicitudes
-              </Text>
+        {/* La bandeja ocupa 9 columnas aunque no haya selección: la derecha queda para la revisión (Mockup 04) */}
+        <Grid.Col span={{ base: 12, lg: 9 }}>
+          <Paper p="md" radius="md" withBorder shadow="xs">
+            <Group justify="space-between" mb="md" wrap="wrap">
+              <div>
+                <Title order={3} size="h4">
+                  Solicitudes de anulación
+                </Title>
+                <Text size="sm" c="dimmed">
+                  Selecciona una solicitud para revisar su detalle
+                </Text>
+              </div>
+              {/* El orden se elige sobre la tabla (Mockup 04, 5.7) */}
+              <Select
+                aria-label="Orden"
+                variant="filled"
+                allowDeselect={false}
+                value={orden}
+                onChange={(val) => setOrden(val || 'recientes')}
+                data={[
+                  { value: 'recientes', label: 'Más recientes' },
+                  { value: 'antiguos', label: 'Más antiguos' },
+                ]}
+                w={180}
+              />
             </Group>
 
-            <EstadoCarga cargando={cargando && usandoDatosEnVivo} error={null} datos={casosPaginados}>
+            <EstadoCarga
+              cargando={cargando && !datos}
+              error={error}
+              datos={casosPaginados}
+              onReintentar={recargar}
+              mensajeVacio="No hay solicitudes de anulación con estos filtros."
+            >
               {(items) => (
                 <>
-                  <Table.ScrollContainer minWidth={600}>
-                    <Table striped highlightOnHover verticalSpacing="sm">
+                  <Table.ScrollContainer minWidth={720}>
+                    <Table highlightOnHover verticalSpacing="sm" horizontalSpacing="xs">
                       <Table.Thead>
                         <Table.Tr>
                           <Table.Th>Pedido / Fecha</Table.Th>
                           <Table.Th>Cliente</Table.Th>
-                          <Table.Th>Estado Pedido</Table.Th>
+                          <Table.Th>Estado</Table.Th>
                           <Table.Th>Motivo</Table.Th>
                           <Table.Th>Autorización</Table.Th>
                           <Table.Th>Solicitud</Table.Th>
@@ -621,73 +442,54 @@ export function AnulacionesPage() {
                           return (
                             <Table.Tr
                               key={item.solicitudAnulacionId}
+                              aria-selected={isSelected}
                               style={{
                                 backgroundColor: isSelected ? 'var(--mantine-color-orange-0)' : undefined,
                                 cursor: 'pointer',
                               }}
-                              onClick={() => setCasoSeleccionado(item)}
+                              onClick={() => setIdSeleccionado(item.solicitudAnulacionId)}
                             >
-                              <Table.Td>
-                                <Text fw={700} size="sm">
+                              <Table.Td style={{ whiteSpace: 'nowrap' }}>
+                                <Text fw={600} size="sm">
                                   {item.pedidoId}
                                 </Text>
                                 <Text size="xs" c="dimmed">
-                                  {item.fecha}
+                                  {formatoFechaHora(item.fecha)}
                                 </Text>
                               </Table.Td>
                               <Table.Td>
-                                <Text size="sm">{item.cliente}</Text>
-                                <Badge size="xs" variant="outline" color="gray">
-                                  {item.canal}
-                                </Badge>
+                                <Text size="sm" miw={110}>
+                                  {item.cliente ?? '—'}
+                                </Text>
+                                <Text size="xs" c="dimmed">
+                                  {item.canal ? ETIQUETA_CANAL[item.canal] : '—'}
+                                </Text>
                               </Table.Td>
-                              <Table.Td>
-                                <EstadoBadge entidad="pedido" estado={item.estadoPedido} />
-                              </Table.Td>
-                              <Table.Td>
-                                <Text size="xs" lineClamp={2}>
-                                  {item.motivo}
+                              <Table.Td style={{ whiteSpace: 'nowrap' }}>
+                                <Text size="xs" fw={600} tt="uppercase">
+                                  {item.estadoPedido ? ETIQUETA_ESTADO[item.estadoPedido] : '—'}
                                 </Text>
                               </Table.Td>
                               <Table.Td>
-                                <Badge
-                                  size="sm"
-                                  variant="light"
-                                  color={
-                                    item.autorizacion === 'Pendiente'
-                                      ? 'yellow'
-                                      : item.autorizacion === 'Aprobada'
-                                      ? 'green'
-                                      : item.autorizacion === 'Rechazada'
-                                      ? 'red'
-                                      : 'gray'
-                                  }
-                                >
-                                  {item.autorizacion}
-                                </Badge>
+                                <Text size="sm" lineClamp={2}>
+                                  {etiquetaMotivo(item.motivo)}
+                                </Text>
                               </Table.Td>
-                              <Table.Td>
-                                <Badge
-                                  size="sm"
-                                  color={
-                                    item.solicitud === 'PENDIENTE'
-                                      ? 'yellow'
-                                      : item.solicitud === 'APROBADA' || item.solicitud === 'EJECUTADA'
-                                      ? 'green'
-                                      : 'red'
-                                  }
-                                >
-                                  {item.solicitud}
-                                </Badge>
+                              <Table.Td style={{ whiteSpace: 'nowrap' }}>
+                                <Pastilla color={COLOR_AUTORIZACION[item.autorizacion]} mayusculas={false}>{item.autorizacion}</Pastilla>
+                              </Table.Td>
+                              <Table.Td style={{ whiteSpace: 'nowrap' }}>
+                                <Pastilla color={COLOR_SOLICITUD[item.solicitud]}>{item.solicitud}</Pastilla>
                               </Table.Td>
                               <Table.Td>
                                 <Button
                                   size="xs"
                                   variant={isSelected ? 'filled' : 'light'}
-                                  color="orange"
+                                  color={isSelected ? undefined : 'gray'}
+                                  c={isSelected ? undefined : 'ink.9'}
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setCasoSeleccionado(item);
+                                    setIdSeleccionado(item.solicitudAnulacionId);
                                   }}
                                 >
                                   Revisar
@@ -700,8 +502,11 @@ export function AnulacionesPage() {
                     </Table>
                   </Table.ScrollContainer>
 
-                  <Group justify="center" mt="md">
-                    <Pagination total={totalPaginas} value={pagina} onChange={setPagina} boundaries={1} siblings={1} color="orange" />
+                  <Group justify="space-between" mt="md" wrap="wrap">
+                    <Text size="sm" c="dimmed">
+                      {resumenIntervalo(pagina, ELEMENTOS_POR_PAGINA, items.length, totalSolicitudes)}
+                    </Text>
+                    {totalPaginas > 1 && <Pagination total={totalPaginas} value={pagina} onChange={setPagina} />}
                   </Group>
                 </>
               )}
@@ -709,134 +514,79 @@ export function AnulacionesPage() {
           </Paper>
         </Grid.Col>
 
-        {/* Panel Lateral: Detalle, Resultado / Efectos y Acciones */}
+        {/* Panel lateral: detalle, resultado / efectos y acciones del caso seleccionado (Mockup 04, 6 a 9) */}
         {casoSeleccionado && (
-          <Grid.Col span={{ base: 12, lg: 5 }}>
+          <Grid.Col span={{ base: 12, lg: 3 }}>
             <Stack gap="md">
-              {/* Tarjeta de Detalle */}
-              <Card p="md" radius="md" withBorder>
-                <Group justify="space-between" mb="xs">
-                  <Title order={4} c="ink.9">
-                    Detalle de Solicitud
+              <Card p="md" shadow="xs">
+                <Group justify="space-between" wrap="nowrap">
+                  <Title order={3} size="h4">
+                    Detalle de solicitud
                   </Title>
-                  <ActionIcon variant="subtle" color="gray" onClick={() => setCasoSeleccionado(null)}>
-                    ✕
+                  <ActionIcon variant="subtle" color="gray" onClick={() => setIdSeleccionado(null)} aria-label="Cerrar detalle">
+                    <IconX size={20} aria-hidden />
                   </ActionIcon>
                 </Group>
-                <Divider mb="sm" />
-
+                <Divider my="sm" />
                 <Stack gap="xs">
-                  <Group justify="space-between">
-                    <Text size="xs" c="dimmed">
-                      Solicitud ID:
-                    </Text>
-                    <Text size="xs" fw={700}>
-                      {casoSeleccionado.solicitudAnulacionId}
-                    </Text>
-                  </Group>
-                  <Group justify="space-between">
-                    <Text size="xs" c="dimmed">
-                      Pedido:
-                    </Text>
-                    <Text size="xs" fw={700} c="orange">
-                      {casoSeleccionado.pedidoId}
-                    </Text>
-                  </Group>
-                  <Group justify="space-between">
-                    <Text size="xs" c="dimmed">
-                      Estado actual pedido:
-                    </Text>
-                    <EstadoBadge entidad="pedido" estado={casoSeleccionado.estadoPedido} />
-                  </Group>
-                  <Group justify="space-between">
-                    <Text size="xs" c="dimmed">
-                      Cliente:
-                    </Text>
-                    <Text size="xs">{casoSeleccionado.cliente}</Text>
-                  </Group>
-                  <Group justify="space-between">
-                    <Text size="xs" c="dimmed">
-                      Canal:
-                    </Text>
-                    <Badge size="xs" variant="outline" color="blue">
-                      {casoSeleccionado.canal}
-                    </Badge>
-                  </Group>
-                  <Group justify="space-between">
-                    <Text size="xs" c="dimmed">
-                      Solicitante:
-                    </Text>
-                    <Text size="xs">{casoSeleccionado.solicitante}</Text>
-                  </Group>
-                  <Group justify="space-between">
-                    <Text size="xs" c="dimmed">
-                      Fecha:
-                    </Text>
-                    <Text size="xs">{casoSeleccionado.fecha}</Text>
-                  </Group>
-                  <Group justify="space-between">
-                    <Text size="xs" c="dimmed">
-                      Motivo declarado:
-                    </Text>
-                    <Text size="xs" fw={600}>
-                      {casoSeleccionado.motivo}
-                    </Text>
-                  </Group>
+                  <Fila etiqueta="Solicitud">{casoSeleccionado.solicitudAnulacionId}</Fila>
+                  <Fila etiqueta="Pedido">{casoSeleccionado.pedidoId}</Fila>
+                  <Fila etiqueta="Estado actual">
+                    {casoSeleccionado.estadoPedido ? (
+                      <EstadoBadge entidad="pedido" estado={casoSeleccionado.estadoPedido} />
+                    ) : (
+                      '—'
+                    )}
+                  </Fila>
+                  <Fila etiqueta="Cliente">{casoSeleccionado.cliente ?? '—'}</Fila>
+                  <Fila etiqueta="Canal">{casoSeleccionado.canal ? ETIQUETA_CANAL[casoSeleccionado.canal] : '—'}</Fila>
+                  <Fila etiqueta="Fecha">{formatoFechaHora(casoSeleccionado.fecha)}</Fila>
+                  <Fila etiqueta="Motivo">{etiquetaMotivo(casoSeleccionado.motivo)}</Fila>
+                  <Fila etiqueta="Autorización">
+                    <Pastilla color={COLOR_AUTORIZACION[casoSeleccionado.autorizacion]} mayusculas={false}>{casoSeleccionado.autorizacion}</Pastilla>
+                  </Fila>
+                  <Fila etiqueta="Solicitud">
+                    <Pastilla color={COLOR_SOLICITUD[casoSeleccionado.solicitud]}>{casoSeleccionado.solicitud}</Pastilla>
+                  </Fila>
                 </Stack>
               </Card>
 
-              {/* Tarjeta de Efectos y Resultados Previstos */}
-              <Card p="md" radius="md" withBorder>
-                <Title order={5} c="ink.9" mb="xs">
-                  Resultado / Efectos Previstos
+              <Card p="md" shadow="xs">
+                <Title order={3} size="h4">
+                  Resultado / efectos
                 </Title>
-                <Divider mb="sm" />
-
+                <Divider my="sm" />
                 <Stack gap="xs">
-                  <Group justify="space-between">
-                    <Text size="xs" c="dimmed">
-                      Estado del pedido:
-                    </Text>
-                    <Badge size="xs" variant="light" color="orange">
-                      {casoSeleccionado.efectos.estadoPedido}
-                    </Badge>
-                  </Group>
-                  <Group justify="space-between">
-                    <Text size="xs" c="dimmed">
-                      Stock / Reserva:
-                    </Text>
-                    <Text size="xs">{casoSeleccionado.efectos.stock}</Text>
-                  </Group>
-                  <Group justify="space-between">
-                    <Text size="xs" c="dimmed">
-                      Despacho:
-                    </Text>
-                    <Text size="xs">{casoSeleccionado.efectos.despacho}</Text>
-                  </Group>
-                  <Group justify="space-between">
-                    <Text size="xs" c="dimmed">
-                      Reembolso (F4):
-                    </Text>
-                    <Text size="xs">{casoSeleccionado.efectos.reembolso}</Text>
-                  </Group>
+                  <Fila etiqueta="Estado del pedido">{casoSeleccionado.efectos.estadoPedido}</Fila>
+                  <Fila etiqueta="Stock">{casoSeleccionado.efectos.stock}</Fila>
+                  <Fila etiqueta="Despacho">{casoSeleccionado.efectos.despacho}</Fila>
+                  <Fila etiqueta="Reembolso">{casoSeleccionado.efectos.reembolso}</Fila>
                 </Stack>
               </Card>
 
-              {/* Tarjeta de Acciones Disponibles */}
-              <Card p="md" radius="md" withBorder>
-                <Title order={5} c="ink.9" mb="xs">
-                  Acciones Disponibles
+              <Card p="md" shadow="xs">
+                <Title order={3} size="h4">
+                  Acciones disponibles
                 </Title>
-                <Divider mb="sm" />
-
-                {casoSeleccionado.solicitud === 'PENDIENTE' ? (
-                  <Stack gap="sm">
-                    <Text size="xs" c="dimmed">
-                      El pedido se encuentra en preparación. Como Gestor de Ventas, puedes autorizar o rechazar esta
-                      solicitud de anulación.
-                    </Text>
-                    <Group grow>
-                      <Button color="green" onClick={() => setModalAprobarAbierto(true)} loading={procesandoAccion}>
+                <Divider my="sm" />
+                <Stack gap="sm">
+                  {casoSeleccionado.solicitud === 'PENDIENTE' ? (
+                    <>
+                      <Text size="sm" c="dimmed">
+                        El pedido está en preparación: la anulación necesita tu autorización como Gestor.
+                      </Text>
+                      {decisionesBloqueadas && (
+                        <Alert color="yellow" p="xs">
+                          <Text size="sm">
+                            No hay una consulta confirmada del servidor. Reintenta la carga antes de decidir.
+                          </Text>
+                        </Alert>
+                      )}
+                      <Button
+                        onClick={() => setModalAprobarAbierto(true)}
+                        loading={procesandoAccion}
+                        disabled={decisionesBloqueadas}
+                      >
                         Aprobar anulación
                       </Button>
                       <Button
@@ -844,22 +594,23 @@ export function AnulacionesPage() {
                         variant="outline"
                         onClick={() => setModalRechazarAbierto(true)}
                         loading={procesandoAccion}
+                        disabled={decisionesBloqueadas}
                       >
                         Rechazar solicitud
                       </Button>
-                    </Group>
-                  </Stack>
-                ) : (
-                  <Stack gap="sm">
-                    <Text size="xs" c="dimmed">
-                      Esta solicitud ya ha sido resuelta ({casoSeleccionado.solicitud}). No requiere acciones
-                      adicionales de autorización.
+                    </>
+                  ) : (
+                    <Text size="sm" c="dimmed">
+                      Esta solicitud ya ha sido resuelta ({casoSeleccionado.solicitud}). No requiere una nueva decisión.
                     </Text>
-                    <Button variant="default" onClick={() => setCasoSeleccionado(null)}>
-                      Volver a la lista
-                    </Button>
-                  </Stack>
-                )}
+                  )}
+                  <Button
+                    variant="default"
+                    onClick={() => navegar(`/admin/pedidos/${encodeURIComponent(casoSeleccionado.pedidoId)}`)}
+                  >
+                    Volver al pedido
+                  </Button>
+                </Stack>
               </Card>
             </Stack>
           </Grid.Col>
@@ -869,11 +620,10 @@ export function AnulacionesPage() {
       {/* Modal Confirmación Aprobación */}
       <ModalConfirmacion
         abierto={modalAprobarAbierto}
-        titulo="Confirmar Aprobación de Anulación"
+        titulo="Confirmar aprobación"
         textoConfirmar="Confirmar aprobación"
-        colorConfirmar="green"
         procesando={procesandoAccion}
-        confirmarDeshabilitado={comentarioAprobacion.trim() === ''}
+        confirmarDeshabilitado={comentarioAprobacion.trim() === '' || decisionesBloqueadas}
         mensaje={
           <Text size="sm">
             ¿Confirmas la aprobación de la anulación para el pedido{' '}
@@ -884,7 +634,7 @@ export function AnulacionesPage() {
             originará la solicitud de reembolso financiero en F4.
           </Text>
         }
-        onConfirmar={handleConfirmarAprobacion}
+        onConfirmar={() => resolver('APROBADA', comentarioAprobacion)}
         onCerrar={() => setModalAprobarAbierto(false)}
       >
         <TextInput
@@ -900,11 +650,11 @@ export function AnulacionesPage() {
       {/* Modal Confirmación Rechazo */}
       <ModalConfirmacion
         abierto={modalRechazarAbierto}
-        titulo="Confirmar Rechazo de Anulación"
+        titulo="Confirmar rechazo"
         textoConfirmar="Confirmar rechazo"
         colorConfirmar="red"
         procesando={procesandoAccion}
-        confirmarDeshabilitado={comentarioRechazo.trim() === ''}
+        confirmarDeshabilitado={comentarioRechazo.trim() === '' || decisionesBloqueadas}
         mensaje={
           <Text size="sm">
             ¿Confirmas el rechazo de la solicitud{' '}
@@ -915,10 +665,10 @@ export function AnulacionesPage() {
             <Text span fw={700}>
               {casoSeleccionado?.pedidoId}
             </Text>{' '}
-            permanecerá en su estado actual ({casoSeleccionado?.estadoPedido}) sin cancelaciones ni reembolsos.
+            permanecerá en su estado actual ({casoSeleccionado?.estadoPedido ?? "sin dato"}) sin cancelaciones ni reembolsos.
           </Text>
         }
-        onConfirmar={handleConfirmarRechazo}
+        onConfirmar={() => resolver('RECHAZADA', comentarioRechazo)}
         onCerrar={() => setModalRechazarAbierto(false)}
       >
         <Textarea
@@ -935,7 +685,7 @@ export function AnulacionesPage() {
       <Modal
         opened={modalSolicitarAbierto}
         onClose={cerrarModalSolicitar}
-        title="Iniciar Solicitud de Anulación (F2 - 1.7)"
+        title={<Text fw={700} size="lg">Iniciar anulación</Text>}
         size="md"
         centered
       >
@@ -975,7 +725,6 @@ export function AnulacionesPage() {
               Cancelar
             </Button>
             <Button
-              color="orange"
               onClick={handleEnviarSolicitudAnulacion}
               loading={solicitandoAnulacion}
               disabled={!pedidoIdSolicitud.trim() || !motivoSolicitud}

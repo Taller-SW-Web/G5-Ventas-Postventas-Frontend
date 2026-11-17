@@ -26,10 +26,18 @@ export interface ContactoPedido {
   telefono?: string | null;
 }
 
+/** Valores de ventas.pago.estado (AGENTS.md punto 4): la pasarela manda APROBADO, M1 lo guarda CONFIRMADO. */
+export type EstadoPago = 'PENDIENTE' | 'CONFIRMADO' | 'RECHAZADO';
+
 export interface PagoPedido {
   total: number;
   moneda: Moneda;
   metodoPago: string | null;
+  /**
+   * Estado real del cobro (api-ventas.md 1.3, agregado 2026-11-04). Independiente del estado del pedido: un pedido
+   * ANULADO puede tenerlo CONFIRMADO. null: el pedido no tiene registro de pago. Ausente en un M1 anterior.
+   */
+  estado?: EstadoPago | null;
 }
 
 /** En RETAIL solo viene tiendaId (acuerdo G4); en los demás canales, la dirección. */

@@ -1,10 +1,14 @@
-// Sesión del Gestor. El login lo resuelve Seguridad (G7); aquí solo se guarda y lee el JWT.
+// Sesión de usuarios (Gestor y Cliente). Autenticación vía Seguridad (G7).
 import type { Rol } from '@/types/comun';
 
 const CLAVE_TOKEN = 'g5.token';
+const CLAVE_REFRESH = 'g5.refresh_token';
 
 /** Rol exigido para todo el portal del Gestor (/admin/*). Nunca GESTOR ni ADMIN. */
 export const ROL_GESTOR: Rol = 'ADMIN_VENTAS';
+
+/** Rol de compradores para la consulta de pedidos propios (/mis-pedidos). */
+export const ROL_CLIENTE: Rol = 'CLIENTE';
 
 export function obtenerToken(): string | null {
   return localStorage.getItem(CLAVE_TOKEN);
@@ -14,8 +18,24 @@ export function guardarToken(token: string): void {
   localStorage.setItem(CLAVE_TOKEN, token);
 }
 
+export function obtenerRefreshToken(): string | null {
+  return localStorage.getItem(CLAVE_REFRESH);
+}
+
+export function guardarRefreshToken(refreshToken: string): void {
+  localStorage.setItem(CLAVE_REFRESH, refreshToken);
+}
+
+export function guardarSesion(accessToken: string, refreshToken?: string): void {
+  guardarToken(accessToken);
+  if (refreshToken) {
+    guardarRefreshToken(refreshToken);
+  }
+}
+
 export function cerrarSesion(): void {
   localStorage.removeItem(CLAVE_TOKEN);
+  localStorage.removeItem(CLAVE_REFRESH);
 }
 
 interface ClaimsJwt {
@@ -25,7 +45,7 @@ interface ClaimsJwt {
 }
 
 /** Decodifica el payload del JWT sin validar firma (la validación real la hace el backend). */
-function leerClaims(token: string): ClaimsJwt | null {
+export function leerClaims(token: string): ClaimsJwt | null {
   try {
     const payload = token.split('.')[1];
     if (!payload) return null;
@@ -62,11 +82,24 @@ export function sesionActual(): { autenticado: boolean; roles: string[]; usuario
   if (!claims) return { autenticado: false, roles: [], usuarioId: null };
 
   const expirado = claims.exp !== undefined && claims.exp * 1000 < Date.now();
-  if (expirado) return { autenticado: false, roles: [], usuarioId: null };
+  // Si expiró pero tenemos refresh token, la sesión se considera renovable en segundo plano
+  const tieneRefresh = Boolean(obtenerRefreshToken());
+  if (expirado && !tieneRefresh) return { autenticado: false, roles: [], usuarioId: null };
 
   return { autenticado: true, roles: claims.roles ?? [], usuarioId: claims.sub ?? null };
 }
 
 export function tieneRol(rol: Rol): boolean {
   return sesionActual().roles.includes(rol);
+}
+
+/** Determina la ruta por defecto a la que debe dirigirse el usuario según sus roles. */
+export function rutaInicialSegunRol(roles: string[]): string {
+  if (roles.includes(ROL_GESTOR)) {
+    return '/admin/pedidos';
+  }
+  if (roles.includes(ROL_CLIENTE)) {
+    return '/mis-pedidos';
+  }
+  return '/acceso-denegado';
 }

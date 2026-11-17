@@ -1,6 +1,7 @@
 // Mockup 09 — Calificaciones y reportes (F5 + F6). Responsable: Johan (calificaciones) + Fabrizio (reportes)
 // Parte F6 (Fabrizio): filtros, indicadores, Desempeño operativo, Distribución por canal, vista Operación Postventa,
-// Comparar, Exportar (simulado), Detalle operativo y Resumen, todo desde 2.12.
+// Comparar, Exportar (CSV generado en el navegador con la consulta aplicada, ver csvReporte), Detalle operativo y
+// Resumen. Postventa sale de 2.12; los conteos de pedidos, de la cohorte de 1.14 (ver DatosDashboard).
 // Parte F5 (Johan): SeccionSatisfaccion y SeccionComentarios, cada una en su propio archivo.
 import { useState } from 'react';
 import { Button, Grid, Group, Paper, Select, SimpleGrid, Stack, Text, Title } from '@mantine/core';

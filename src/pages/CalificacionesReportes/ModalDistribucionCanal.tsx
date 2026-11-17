@@ -1,5 +1,6 @@
 // Overlay_Distribucion_por_canal (Mockup 09, 9.2): pedidos, participación, CSAT y monto reembolsado por canal.
-import { Button, Group, Modal, Stack, Table, Text, Title } from '@mantine/core';
+import { Button, Group, Modal, Stack, Table, Text } from '@mantine/core';
+import { ESTILO_TITULO_MODAL } from './compartido/tituloModal';
 import type { Canal } from '@/types/comun';
 import type { MetricasDashboard } from '@/types/reclamo';
 import { entero, soles } from '../Dashboard/metricas';
@@ -17,7 +18,7 @@ interface Props {
 export function ModalDistribucionCanal({ abierto, contexto, porCanal, onCerrar }: Props) {
   const total = porCanal?.reduce((s, c) => s + c.metricas.pedidos.total, 0) ?? 0;
   return (
-    <Modal opened={abierto} onClose={onCerrar} size="xl" title={<Title order={3}>Distribución por canal</Title>}>
+    <Modal opened={abierto} onClose={onCerrar} size="xl" title="Distribución por canal" styles={ESTILO_TITULO_MODAL}>
       {contexto && (
         <Stack gap="md">
           <FiltrosAplicados

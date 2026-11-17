@@ -1,6 +1,8 @@
+import { useNavigate } from 'react-router-dom';
 import { Button, Text, Title } from '@mantine/core';
 import { EstadoBadge } from '@/components/EstadoBadge';
 import type { DetalleReembolsoResponse } from '@/types/reembolso';
+import { rutaExpedienteOrigen, rutaPedido } from './rutasReembolso';
 
 type ModalAccion = 'autorizar' | 'ejecutar' | 'reintento' | 'resultado' | null;
 const origen = (valor: DetalleReembolsoResponse['origen']) => valor === 'ANULACION' ? 'Anulación' : 'Devolución';
@@ -16,6 +18,7 @@ function Paso({ titulo, descripcion, cuando, activo, ultimo = false }: { titulo:
 }
 
 export function DetalleReembolso({ reembolso, autorizadoVisualmente, onClose, onOpenModal }: { reembolso: DetalleReembolsoResponse; autorizadoVisualmente: boolean; onClose: () => void; onOpenModal: (modal: ModalAccion) => void }) {
+  const navigate = useNavigate();
   const intento = reembolso.intentos.at(-1);
   const enviado = reembolso.intentos.length > 0;
   const confirmado = reembolso.estado === 'EXITOSO' || reembolso.estado === 'FALLIDO';
@@ -28,7 +31,7 @@ export function DetalleReembolso({ reembolso, autorizadoVisualmente, onClose, on
       <Paso titulo="Resultado confirmado" descripcion="EXITOSO o FALLIDO queda persistido" cuando={confirmado ? fecha(intento?.fecha ?? null) : '—'} activo={confirmado} ultimo />
     </section>
     <aside className="reembolsos-detail" aria-label="Detalle del reembolso"><section className="reembolsos-detail-card"><div className="reembolsos-detail-heading"><Title order={2}>Detalle del reembolso</Title><EstadoBadge entidad="reembolso" estado={reembolso.estado} size="sm" /><button type="button" className="reembolsos-detail-close" aria-label="Cerrar detalle" onClick={onClose}>×</button></div><div className="reembolsos-detail-divider" /><ListaDatos valores={[
-      ['Código', reembolso.reembolsoId], ['Pedido', reembolso.pedidoId], ['Origen', origen(reembolso.origen)], ['Monto', monto(reembolso.monto, reembolso.moneda)], ['Parcial / total', reembolso.total ? 'Total' : 'Parcial'], ['Referencia de pago', '—'], ['Id de operación', reembolso.transaccionPasarelaId ?? '—'], ['Autorizador', reembolso.autorizadorId ?? '—'], ['Resultado simulado', intento?.resultado ?? 'Pendiente de autorización'], ['Fecha de creación', fecha(`${reembolso.fecha}T00:00:00`)], ['Estado', reembolso.estado],
+      ['Código', reembolso.reembolsoId], ['Pedido', reembolso.pedidoId], ['Origen', origen(reembolso.origen)], ['Monto', monto(reembolso.monto, reembolso.moneda)], ['Parcial / total', reembolso.total ? 'Total' : 'Parcial'], ['Referencia de pago', reembolso.transaccionPasarelaId ?? '—'], ['Id de operación', intento?.transaccionPasarelaId ?? '—'], ['Autorizador', reembolso.autorizadorId ?? '—'], ['Resultado simulado', intento?.resultado ?? 'Pendiente de autorización'], ['Fecha de creación', fecha(`${reembolso.fecha}T00:00:00`)], ['Estado', reembolso.estado],
     ]} /></section>
       <section className="reembolsos-detail-card reembolsos-trace"><Title order={2}>Trazabilidad</Title><div className="reembolsos-detail-divider" /><ListaDatos valores={[['Cliente', reembolso.clienteNombre ?? '—'], ['Canal', canal(reembolso.canal)], ['Método de pago', reembolso.metodoPago ?? '—'], ['Clave idempotente', reembolso.claveIdempotencia]]} /></section>
       <section className="reembolsos-detail-card reembolsos-actions"><Title order={2}>Acciones disponibles</Title><div className="reembolsos-detail-divider" />
@@ -38,7 +41,7 @@ export function DetalleReembolso({ reembolso, autorizadoVisualmente, onClose, on
         {reembolso.estado === 'PENDIENTE' && enviado && autorizado && <Button onClick={() => onOpenModal('ejecutar')}>Ejecutar reembolso</Button>}
         {reembolso.estado === 'FALLIDO' && <><Button variant="default" onClick={() => onOpenModal('resultado')}>Consultar resultado</Button><Button onClick={() => onOpenModal('reintento')}>Reintento seguro</Button></>}
         {reembolso.estado === 'EXITOSO' && <Button className="reembolsos-success-action" variant="light" onClick={() => onOpenModal('resultado')}>Consultar resultado</Button>}
-        <Button variant="default">Volver al pedido</Button><Button variant="subtle">Ver expediente origen</Button>
+        <Button variant="default" onClick={() => navigate(rutaPedido(reembolso.pedidoId))}>Volver al pedido</Button><Button variant="subtle" onClick={() => navigate(rutaExpedienteOrigen(reembolso.origen, reembolso.origenId, reembolso.pedidoId))}>Ver expediente origen</Button>
       </section></aside>
   </>;
 }

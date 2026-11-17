@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Loader, Modal, Pagination, Select, Table, Text, TextInput, Title } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { notifications } from '@mantine/notifications';
@@ -24,14 +25,18 @@ const compacto = (valor: number) => valor < 1_000 ? String(valor) : `${new Intl.
 type ModalAccion = 'autorizar' | 'ejecutar' | 'reintento' | 'resultado' | null;
 
 export function ReembolsosPage() {
-  const [busqueda, setBusqueda] = useState('');
+  const navigate = useNavigate();
+  // ?reembolso=REEM-... (desde una devolución): se busca ese código y se abre su detalle
+  const [params] = useSearchParams();
+  const reembolsoParam = params.get('reembolso');
+  const [busqueda, setBusqueda] = useState(reembolsoParam ?? '');
   const [estadoFiltro, setEstadoFiltro] = useState<string | null>('TODOS');
   const [origenFiltro, setOrigenFiltro] = useState<string | null>('TODOS');
   const [fechaFiltro, setFechaFiltro] = useState<string | null>(null);
-  const [aplicados, setAplicados] = useState({ busqueda: '', estado: 'TODOS', origen: 'TODOS', fecha: null as string | null });
+  const [aplicados, setAplicados] = useState({ busqueda: reembolsoParam ?? '', estado: 'TODOS', origen: 'TODOS', fecha: null as string | null });
   const [pagina, setPagina] = useState(1);
   const [orden, setOrden] = useState<'RECIENTES' | 'ANTIGUOS'>('RECIENTES');
-  const [seleccionado, setSeleccionado] = useState<string | null>(null);
+  const [seleccionado, setSeleccionado] = useState<string | null>(reembolsoParam);
   const [modal, setModal] = useState<ModalAccion>(null);
   const [autorizados, setAutorizados] = useState<string[]>([]);
   const [procesando, setProcesando] = useState(false);
@@ -69,7 +74,7 @@ export function ReembolsosPage() {
   };
 
   return <section className="reembolsos-page">
-    <div className="reembolsos-heading"><button className="reembolsos-back" type="button" aria-label="Volver"><img src={backIcon} alt="" /></button><Title order={1}>Reembolsos</Title></div>
+    <div className="reembolsos-heading"><button className="reembolsos-back" type="button" aria-label="Volver al Hub Postventa" onClick={() => navigate('/admin/postventa')}><img src={backIcon} alt="" /></button><Title order={1}>Reembolsos</Title></div>
     <section className="reembolsos-filters" aria-label="Filtros de reembolsos">
       <label className="reembolsos-field reembolsos-search"><span>Buscar</span><TextInput value={busqueda} onChange={(e) => setBusqueda(e.currentTarget.value)} leftSection={<img src={searchIcon} alt="" className="reembolsos-input-icon" />} aria-label="Buscar por código o pedido" /></label>
       <label className="reembolsos-field"><span>Estado</span><Select value={estadoFiltro} onChange={setEstadoFiltro} data={[{ value: 'TODOS', label: 'Todos' }, { value: 'PENDIENTE', label: 'Pendiente' }, { value: 'EXITOSO', label: 'Exitoso' }, { value: 'FALLIDO', label: 'Fallido' }]} rightSection={<img src={chevronIcon} alt="" className="reembolsos-input-icon" />} rightSectionPointerEvents="none" allowDeselect={false} /></label>

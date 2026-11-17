@@ -14,6 +14,7 @@ import { ModalRecepcion } from './ModalRecepcion';
 import { TarjetaPanel } from './PanelesExpediente';
 import { faltaRecepcion, type Expediente } from './expediente';
 import { ETIQUETA_TIPO } from './formato';
+import { rutaReembolso } from '../Reembolsos/rutasReembolso';
 
 type Modal = 'aprobar' | 'rechazar' | 'cambio' | 'reembolso' | 'sinStock' | 'recepcion';
 
@@ -110,7 +111,7 @@ export function AccionesExpediente({
         )}
 
         {camino === 'REEMBOLSO' && r?.referenciaOperacion && (
-          <Button fullWidth variant="light" onClick={() => navigate('/admin/postventa/reembolsos')}>
+          <Button fullWidth variant="light" onClick={() => navigate(rutaReembolso(r.referenciaOperacion!))}>
             Ver en Reembolsos
           </Button>
         )}

@@ -18,6 +18,12 @@ h6.mantine-Title-root {
   font-family: var(--mantine-font-family);
 }
 
+/* Campos de filtro con fondo relleno (variant="filled", Mockups 02 a 04): cloud-subtle en lugar del gris de Mantine. */
+.mantine-Input-input[data-variant='filled'] {
+  background-color: var(--mantine-color-cloud-3);
+  border-color: transparent;
+}
+
 /* Foco de teclado con color/accent/signal en todo el sitio. */
 :focus-visible {
   outline: 2px solid var(--mantine-color-signal-6);

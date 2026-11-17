@@ -131,7 +131,14 @@ export function DashboardPage() {
         onReintentar={consulta.recargar}
         esVacio={() => false}
       >
-        {(datos) => <Contenido datos={datos} reclamosAbiertos={reclamosAbiertos.datos} />}
+        {(datos) => (
+          <Contenido
+            datos={datos}
+            reclamosAbiertos={reclamosAbiertos.datos}
+            reclamosError={reclamosAbiertos.error !== null}
+            canalFiltrado={canal !== undefined}
+          />
+        )}
       </EstadoCarga>
     </Stack>
   );
@@ -168,8 +175,17 @@ function Dato({ etiqueta, valor }: { etiqueta: string; valor: string }) {
   );
 }
 
-function Contenido({ datos, reclamosAbiertos }: { datos: DatosDashboard; reclamosAbiertos: number | null }) {
-  const { actual, anterior, porCanal, ventas, ventasAnterior } = datos;
+interface ContenidoProps {
+  datos: DatosDashboard;
+  reclamosAbiertos: number | null;
+  reclamosError: boolean;
+  canalFiltrado: boolean;
+}
+
+function Contenido({ datos, reclamosAbiertos, reclamosError, canalFiltrado }: ContenidoProps) {
+  const { actual, anterior, hechos, porCanal, ventas, ventasAnterior } = datos;
+  const devolucion = tasaDevolucion(actual.postventa.devolucionesAprobadas, hechos.actual.entregados);
+  const devolucionAnterior = tasaDevolucion(anterior.postventa.devolucionesAprobadas, hechos.anterior.entregados);
   const ticket = (v: typeof ventas) => (v.vendidos > 0 ? v.monto / v.vendidos : null);
   const pico = ventas.porDia.reduce((m, d) => (d.monto > m.monto ? d : m), { fecha: '', monto: 0 });
   const variacionVentas = variacionPorcentual(ventas.monto, ventasAnterior.monto);
@@ -187,7 +203,7 @@ function Contenido({ datos, reclamosAbiertos }: { datos: DatosDashboard; reclamo
   return (
     <Stack gap="lg">
       <Text size="sm" c="dimmed">
-        Periodo {fechaCorta(actual.periodo.desde)} a {fechaCorta(actual.periodo.hasta)}
+        Periodo {fechaCorta(actual.periodo.desde)} a {fechaCorta(actual.periodo.hasta)} (días UTC)
         {actual.ultimaActualizacion
           ? ` · datos consolidados al ${fechaHora(actual.ultimaActualizacion)}`
           : ' · sin actividad registrada en el periodo'}
@@ -218,24 +234,30 @@ function Contenido({ datos, reclamosAbiertos }: { datos: DatosDashboard; reclamo
           variacion={diferencia(tasaAnulacion(actual), tasaAnulacion(anterior))}
           unidad="pp"
           menosEsMejor
-          pie="Anulados sobre pedidos del periodo"
+          pie="Anulados sobre pedidos creados en el periodo"
         />
         <TarjetaKpi
           categoria="Devoluciones"
           titulo="Tasa de devolución"
-          valor={porcentaje(tasaDevolucion(actual))}
+          valor={porcentaje(devolucion)}
           icono="↩"
-          variacion={diferencia(tasaDevolucion(actual), tasaDevolucion(anterior))}
+          variacion={diferencia(devolucion, devolucionAnterior)}
           unidad="pp"
           menosEsMejor
-          pie="Aprobadas sobre pedidos entregados"
+          pie={`${entero(actual.postventa.devolucionesAprobadas)} aprobadas / ${entero(hechos.actual.entregados)} entregas del periodo`}
         />
         <TarjetaKpi
           categoria="Atención"
           titulo="Reclamos abiertos"
           valor={reclamosAbiertos === null ? '—' : entero(reclamosAbiertos)}
           icono="!"
-          pie="Casos por resolver"
+          pie={
+            reclamosError
+              ? 'No se pudo consultar'
+              : canalFiltrado
+                ? 'Por resolver hoy, todos los canales'
+                : 'Casos por resolver hoy'
+          }
         />
       </SimpleGrid>
 
@@ -300,7 +322,7 @@ function Contenido({ datos, reclamosAbiertos }: { datos: DatosDashboard; reclamo
         <Grid.Col span={{ base: 12, lg: 7 }}>
           <Bloque
             titulo="Distribución de pedidos"
-            subtitulo="Composición del periodo por estado del pedido"
+            subtitulo="Pedidos creados en el periodo, por su estado actual"
             extra={<Dato etiqueta="Total pedidos" valor={entero(pedidos.total)} />}
           >
             {totalDistribucion === 0 ? (

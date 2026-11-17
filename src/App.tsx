@@ -1,5 +1,6 @@
-// Rutas del portal del Gestor. Todo lo administrativo vive bajo /admin/* y exige ADMIN_VENTAS.
-// Vistas públicas de integración (encuesta CSAT, consulta de reclamo) irán fuera de /admin/*.
+// Rutas del portal de Ventas y Postventa.
+// - Todo lo administrativo vive bajo /admin/* y exige ADMIN_VENTAS.
+// - La consulta de compras propias vive en /mis-pedidos y exige CLIENTE.
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { LayoutGestor } from '@/components/LayoutGestor';
 import { RutaProtegida } from '@/components/RutaProtegida';
@@ -12,20 +13,28 @@ import { DetallePedidoPage } from '@/pages/DetallePedido';
 import { DevolucionesPage } from '@/pages/Devoluciones';
 import { HubPostventaPage } from '@/pages/HubPostventa';
 import { IngresarPage } from '@/pages/Ingresar';
+import { MisPedidosPage } from '@/pages/MisPedidos';
 import { NoEncontradoPage } from '@/pages/NoEncontrado';
 import { PedidosPage } from '@/pages/Pedidos';
 import { ReclamosPage } from '@/pages/Reclamos';
 import { ReembolsosPage } from '@/pages/Reembolsos';
+import { ROL_CLIENTE, ROL_GESTOR } from '@/services/auth';
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Navigate to="/admin/dashboard" replace />} />
+        <Route path="/" element={<Navigate to="/ingresar" replace />} />
         <Route path="/acceso-denegado" element={<AccesoDenegadoPage />} />
         <Route path="/ingresar" element={<IngresarPage />} />
 
-        <Route path="/admin" element={<RutaProtegida />}>
+        {/* Vista del cliente (rol CLIENTE) */}
+        <Route element={<RutaProtegida rol={ROL_CLIENTE} />}>
+          <Route path="/mis-pedidos" element={<MisPedidosPage />} />
+        </Route>
+
+        {/* Portal del Gestor (rol ADMIN_VENTAS) */}
+        <Route path="/admin" element={<RutaProtegida rol={ROL_GESTOR} />}>
           <Route element={<LayoutGestor />}>
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />

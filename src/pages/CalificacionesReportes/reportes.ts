@@ -127,10 +127,16 @@ export interface ContextoReporte {
 /**
  * Exportación (ESP-16, sección 8): CSV con exactamente los indicadores de la consulta aplicada, sin volver a
  * llamar al backend. Separador ";" y BOM UTF-8 para que Excel en español lo abra con columnas y tildes.
+ * El formato no está en el contrato (ESP-16 8.7): es una descarga del navegador, no un endpoint. Los valores van
+ * sin separador de miles y con los mismos decimales que la pantalla (monto y CSAT con 2); CSAT sin encuestas
+ * se exporta con el mismo texto que se ve.
  */
 export function csvReporte(c: ContextoReporte): string {
   const celda = (v: string) => (/[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
-  const valor = (i: Indicador) => (i.numero === null ? '' : String(i.numero));
+  const valor = (i: Indicador) => {
+    if (i.numero === null) return i.texto;
+    return i.clave === 'REEMBOLSADO' || i.clave === 'CSAT' ? i.numero.toFixed(2) : String(i.numero);
+  };
   const filas = [
     ['Periodo', c.periodo],
     ['Desde', c.rango.desde],
