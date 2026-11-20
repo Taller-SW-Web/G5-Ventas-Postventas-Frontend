@@ -27,3 +27,6 @@ Thumbs.db
 
 # Herramientas locales
 .claude/
+
+# Configuracion local de Vercel
+.vercel/
