@@ -98,6 +98,17 @@ export interface ListadoPedidos extends Paginado<PedidoResumen> {
   clienteId: string | null;
 }
 
+/**
+ * 1.4b GET /api/v1/pedidos/me: formato propio acordado con Marketplace (H-03), distinto al resto de la API.
+ * page empieza en 1.
+ */
+export interface MisPedidos {
+  items: PedidoResumen[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 /** 1.14 GET /api/v1/pedidos/kpis — KPIs de ventas del Dashboard, sumados en M1. */
 export interface KpisVentas {
   desde: string;

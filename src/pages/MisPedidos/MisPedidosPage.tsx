@@ -44,7 +44,7 @@ export function MisPedidosPage() {
       setError(null);
       try {
         const respuesta = await listarMisPedidos();
-        setPedidos(respuesta.contenido || []);
+        setPedidos(respuesta.items ?? []);
       } catch (err) {
         setError(
           err instanceof Error
