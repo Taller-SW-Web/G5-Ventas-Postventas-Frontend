@@ -6,6 +6,7 @@ import type {
   FiltrosPedidos,
   KpisVentas,
   ListadoPedidos,
+  MisPedidos,
   PedidoDetalle,
 } from '@/types/pedido';
 
@@ -22,8 +23,8 @@ export async function listarMisPedidos(filtros?: {
   hasta?: string;
   page?: number;
   pageSize?: number;
-}): Promise<ListadoPedidos> {
-  const { data } = await apiVentas.get<ListadoPedidos>('/api/v1/pedidos/me', { params: filtros });
+}): Promise<MisPedidos> {
+  const { data } = await apiVentas.get<MisPedidos>('/api/v1/pedidos/me', { params: filtros });
   return data;
 }
 
